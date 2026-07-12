@@ -1,12 +1,12 @@
 /**
- * GET /api/records?start=2024-01-01&end=2024-01-31
+ * GET /api/records?start=2026-07-06&end=2026-07-12
  *
  * 从飞书多维表格查询日期范围内的积分记录
+ * 策略：拉取所有记录，前端按日期范围过滤（飞书的日期筛选条件不太好用）
  */
 import { feishuHeaders, bitableBaseUrl } from './_feishu.js'
 
 export default async function handler(req, res) {
-  // 允许跨域（本地开发用）
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
@@ -18,7 +18,6 @@ export default async function handler(req, res) {
 
   try {
     const { start, end } = req.query
-
     if (!start || !end) {
       return res.status(400).json({ error: '需要 start 和 end 参数，格式 YYYY-MM-DD' })
     }
@@ -26,30 +25,29 @@ export default async function handler(req, res) {
     const headers = await feishuHeaders()
     const baseUrl = bitableBaseUrl()
 
-    // 构建筛选条件：日期 >= start AND 日期 <= end
-    const filter = JSON.stringify({
-      conjunction: 'and',
-      conditions: [
-        { field_name: '日期', operator: 'isGreater', value: [start + ' 00:00'] },
-        { field_name: '日期', operator: 'isLess', value: [end + ' 23:59'] },
-      ],
-    })
+    // 拉取所有记录（多页），不依赖飞书的日期筛选
+    let allItems = []
+    let pageToken = ''
 
-    // 尝试用文本字段直接筛选
-    const sort = JSON.stringify([{ field_name: '日期', desc: false }])
-    const params = new URLSearchParams({ page_size: '100', sort })
+    do {
+      const params = new URLSearchParams({ page_size: '500' })
+      if (pageToken) params.set('page_token', pageToken)
 
-    const url = `${baseUrl}?${params}`
-    const response = await fetch(url, { headers })
-    const data = await response.json()
+      const url = `${baseUrl}?${params}`
+      const response = await fetch(url, { headers })
+      const data = await response.json()
 
-    if (data.code !== 0) {
-      console.error('飞书 API 错误:', data)
-      return res.status(500).json({ error: data.msg })
-    }
+      if (data.code !== 0) {
+        console.error('飞书 API 错误:', data)
+        return res.status(500).json({ error: data.msg, code: data.code })
+      }
 
-    // 把飞书的记录格式转成前端需要的格式
-    const records = (data.data?.items || [])
+      allItems = allItems.concat(data.data?.items || [])
+      pageToken = data.data?.page_token || ''
+    } while (pageToken)
+
+    // 转换为前端需要的格式
+    const records = allItems
       .map((item) => {
         const f = item.fields
         return {
@@ -61,8 +59,8 @@ export default async function handler(req, res) {
           deductReason: extractText(f['扣分原因']),
         }
       })
-      // 在前端侧也做一次日期过滤（兜底）
       .filter((r) => r.date >= start && r.date <= end)
+      .sort((a, b) => a.date.localeCompare(b.date))
 
     return res.status(200).json({ records })
   } catch (err) {
