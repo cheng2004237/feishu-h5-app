@@ -24,7 +24,7 @@ const dateRangeText = computed(() => {
   if (timeRange.value === 'week') {
     const s = dayjs().startOf('isoWeek')
     const e = dayjs().endOf('isoWeek')
-    return `${s.format('M/D')} - ${e.format('M/D')}`
+    return `${s.format('M/D')} – ${e.format('M/D')}`
   } else {
     return dayjs().format('YYYY年M月')
   }
@@ -48,7 +48,6 @@ function switchRange(range) {
   loadStats()
 }
 
-// 柱状图：每日得分
 const barMaxValue = computed(() => {
   if (!summary.value || !summary.value.dailyScores.length) return 1
   return Math.max(
@@ -57,7 +56,6 @@ const barMaxValue = computed(() => {
   )
 })
 
-// 柱状图：每日三餐
 const mealDaysWithData = computed(() => {
   if (!summary.value) return []
   return summary.value.dailyScores.filter(
@@ -81,7 +79,6 @@ function formatWeekday(dateStr) {
   return dayjs(dateStr).format('ddd')
 }
 
-// 原因图表 - 最大次数（用于计算百分比宽度）
 function reasonMaxCount(reasons) {
   if (!reasons || !reasons.length) return 1
   return Math.max(...reasons.map((r) => r.count), 1)
@@ -95,7 +92,7 @@ onMounted(() => {
 <template>
   <div class="page">
     <div class="page-header">
-      <h1>程怿一 · 积分统计</h1>
+      <h1>积分统计</h1>
       <p>{{ dateRangeText }}</p>
     </div>
 
@@ -118,19 +115,22 @@ onMounted(() => {
         </div>
       </div>
 
-      <template v-if="summary">
-        <!-- 总分卡片 -->
-        <div class="score-hero">
+      <div v-if="loading" class="loading">
+        <div class="loading-spinner"></div>
+        <div>加载中…</div>
+      </div>
+
+      <template v-else-if="summary">
+        <!-- 净分英雄卡 -->
+        <div class="hero-card">
           <div class="hero-label">{{ timeRangeLabel }}净得分</div>
           <div
             class="hero-value"
-            :class="summary.netScore >= 0 ? 'points-positive' : 'points-negative'"
+            :class="summary.netScore >= 0 ? 'positive' : 'negative'"
           >
             {{ summary.netScore >= 0 ? '+' : '' }}{{ summary.netScore }}
           </div>
-          <div class="hero-sub">
-            已记录 {{ summary.dayCount }} 天
-          </div>
+          <div class="hero-sub">已记录 {{ summary.dayCount }} 天</div>
         </div>
 
         <!-- 加分 / 扣分 总览 -->
@@ -146,18 +146,30 @@ onMounted(() => {
         </div>
 
         <!-- 三餐金额总览 -->
-        <div class="card meal-hero" v-if="summary.totalMeal > 0">
-          <div class="meal-hero-label">{{ timeRangeLabel }}三餐总花费</div>
+        <div v-if="summary.totalMeal > 0" class="meal-hero">
+          <div class="meal-hero-label">{{ timeRangeLabel }}三餐花费</div>
           <div class="meal-hero-value">¥{{ summary.totalMeal.toFixed(2) }}</div>
           <div class="meal-hero-breakdown">
-            <span>🌅 早餐 ¥{{ summary.totalBreakfast.toFixed(2) }}</span>
-            <span>☀️ 午餐 ¥{{ summary.totalLunch.toFixed(2) }}</span>
-            <span>🌙 晚餐 ¥{{ summary.totalDinner.toFixed(2) }}</span>
+            <div>
+              <span class="meal-hero-emoji">🌅</span>
+              <span class="meal-hero-name">早餐</span>
+              <span class="meal-hero-num">¥{{ summary.totalBreakfast.toFixed(2) }}</span>
+            </div>
+            <div>
+              <span class="meal-hero-emoji">☀️</span>
+              <span class="meal-hero-name">午餐</span>
+              <span class="meal-hero-num">¥{{ summary.totalLunch.toFixed(2) }}</span>
+            </div>
+            <div>
+              <span class="meal-hero-emoji">🌙</span>
+              <span class="meal-hero-name">晚餐</span>
+              <span class="meal-hero-num">¥{{ summary.totalDinner.toFixed(2) }}</span>
+            </div>
           </div>
         </div>
 
         <!-- 每日得分柱状图 -->
-        <div class="card" v-if="summary.dailyScores.length">
+        <div v-if="summary.dailyScores.length" class="card">
           <div class="card-title">📊 每日得分</div>
           <div class="bar-chart">
             <div
@@ -188,10 +200,10 @@ onMounted(() => {
         </div>
 
         <!-- 加分原因统计 -->
-        <div class="card" v-if="summary.addReasons.length">
+        <div v-if="summary.addReasons.length" class="card">
           <div class="card-title">
-            <span class="section-icon add-icon">+</span>
-            加分原因统计
+            <span class="reason-badge add">+</span>
+            加分原因
           </div>
           <div class="reason-list">
             <div
@@ -214,10 +226,10 @@ onMounted(() => {
         </div>
 
         <!-- 扣分原因统计 -->
-        <div class="card" v-if="summary.deductReasons.length">
+        <div v-if="summary.deductReasons.length" class="card">
           <div class="card-title">
-            <span class="section-icon deduct-icon">−</span>
-            扣分原因统计
+            <span class="reason-badge deduct">−</span>
+            扣分原因
           </div>
           <div class="reason-list">
             <div
@@ -240,8 +252,8 @@ onMounted(() => {
         </div>
 
         <!-- 每日三餐柱状图 -->
-        <div class="card" v-if="mealDaysWithData.length">
-          <div class="card-title">🍱 每日三餐花费</div>
+        <div v-if="mealDaysWithData.length" class="card">
+          <div class="card-title">🍱 每日三餐</div>
           <div class="bar-chart">
             <div
               v-for="day in mealDaysWithData"
@@ -250,21 +262,21 @@ onMounted(() => {
             >
               <div class="bar-bars">
                 <div
-                  class="bar bar-meal-breakfast"
+                  class="bar bar-meal-b"
                   :style="{ height: (day.breakfast / mealBarMax) * 100 + '%' }"
                   :title="'早餐: ¥' + day.breakfast"
                 >
                   <span class="bar-val" v-if="day.breakfast">¥{{ day.breakfast.toFixed(0) }}</span>
                 </div>
                 <div
-                  class="bar bar-meal-lunch"
+                  class="bar bar-meal-l"
                   :style="{ height: (day.lunch / mealBarMax) * 100 + '%' }"
                   :title="'午餐: ¥' + day.lunch"
                 >
                   <span class="bar-val" v-if="day.lunch">¥{{ day.lunch.toFixed(0) }}</span>
                 </div>
                 <div
-                  class="bar bar-meal-dinner"
+                  class="bar bar-meal-d"
                   :style="{ height: (day.dinner / mealBarMax) * 100 + '%' }"
                   :title="'晚餐: ¥' + day.dinner"
                 >
@@ -278,10 +290,10 @@ onMounted(() => {
         </div>
 
         <!-- 三餐内容统计 -->
-        <div class="card" v-if="summary.breakfastReasons.length">
+        <div v-if="summary.breakfastReasons.length" class="card">
           <div class="card-title">
-            <span class="section-icon meal-icon-sm">🌅</span>
-            早餐内容统计
+            <span class="reason-badge meal">🌅</span>
+            早餐内容
           </div>
           <div class="reason-list">
             <div
@@ -303,10 +315,10 @@ onMounted(() => {
           </div>
         </div>
 
-        <div class="card" v-if="summary.lunchReasons.length">
+        <div v-if="summary.lunchReasons.length" class="card">
           <div class="card-title">
-            <span class="section-icon meal-icon-sm">☀️</span>
-            午餐内容统计
+            <span class="reason-badge meal">☀️</span>
+            午餐内容
           </div>
           <div class="reason-list">
             <div
@@ -328,10 +340,10 @@ onMounted(() => {
           </div>
         </div>
 
-        <div class="card" v-if="summary.dinnerReasons.length">
+        <div v-if="summary.dinnerReasons.length" class="card">
           <div class="card-title">
-            <span class="section-icon meal-icon-sm">🌙</span>
-            晚餐内容统计
+            <span class="reason-badge meal">🌙</span>
+            晚餐内容
           </div>
           <div class="reason-list">
             <div
@@ -354,7 +366,7 @@ onMounted(() => {
         </div>
 
         <!-- 每日明细 -->
-        <div class="card" v-if="summary.dailyScores.length">
+        <div v-if="summary.dailyScores.length" class="card">
           <div class="card-title">📋 每日明细</div>
           <div class="detail-list">
             <div
@@ -381,7 +393,6 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- 空状态 -->
         <div v-if="summary.dayCount === 0" class="empty-state" style="margin-top: 30px;">
           <div class="icon">📊</div>
           <p>{{ timeRangeLabel }}暂无记录</p>
@@ -393,51 +404,111 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* 总分英雄卡 */
-.score-hero {
-  background: linear-gradient(135deg, #4158d0 0%, #3370ff 50%, #48a9f8 100%);
+/* 英雄卡 */
+.hero-card {
+  background: var(--color-bg-white);
   border-radius: var(--radius-lg);
-  padding: 28px 20px;
-  text-align: center;
+  padding: 24px 20px;
   margin-bottom: 12px;
-  color: white;
-  box-shadow: 0 4px 20px rgba(51, 112, 255, 0.3);
+  text-align: center;
+  box-shadow: var(--shadow-sm);
 }
 
 .hero-label {
   font-size: 13px;
-  opacity: 0.85;
-  margin-bottom: 8px;
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
+  font-weight: 500;
 }
 
 .hero-value {
-  font-size: 48px;
-  font-weight: 800;
-  color: white !important;
-  line-height: 1;
-  margin-bottom: 8px;
+  font-size: 64px;
+  font-weight: 700;
+  letter-spacing: -1.5px;
+  line-height: 1.05;
+  margin-bottom: 6px;
 }
+
+.hero-value.positive { color: var(--color-primary); }
+.hero-value.negative { color: var(--color-danger); }
 
 .hero-sub {
   font-size: 12px;
-  opacity: 0.7;
+  color: var(--color-text-secondary);
 }
 
-/* 区域图标 */
-.section-icon {
+/* 三餐英雄卡 */
+.meal-hero {
+  background: var(--color-bg-white);
+  border-radius: var(--radius-lg);
+  padding: 22px 20px;
+  margin-bottom: 12px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+  border-left: 4px solid var(--color-warning);
+}
+
+.meal-hero-label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.meal-hero-value {
+  font-size: 44px;
+  font-weight: 700;
+  color: var(--color-warning);
+  letter-spacing: -1px;
+  line-height: 1.1;
+  margin-bottom: 12px;
+}
+
+.meal-hero-breakdown {
+  display: flex;
+  justify-content: space-around;
+  padding-top: 10px;
+  border-top: 1px solid rgba(60, 60, 67, 0.08);
+}
+
+.meal-hero-breakdown > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.meal-hero-emoji {
+  font-size: 18px;
+}
+
+.meal-hero-name {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.meal-hero-num {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* 原因徽章 */
+.reason-badge {
   width: 22px;
   height: 22px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: white;
 }
 
-.add-icon { background: var(--color-success); }
-.deduct-icon { background: var(--color-danger); }
+.reason-badge.add { background: var(--color-success); }
+.reason-badge.deduct { background: var(--color-danger); }
+.reason-badge.meal { background: var(--color-warning); font-size: 11px; }
 
 /* 柱状图 */
 .bar-chart {
@@ -445,7 +516,7 @@ onMounted(() => {
   align-items: flex-end;
   gap: 6px;
   height: 160px;
-  padding-top: 20px;
+  padding-top: 22px;
 }
 
 .bar-group {
@@ -460,56 +531,77 @@ onMounted(() => {
   flex: 1;
   display: flex;
   align-items: flex-end;
-  gap: 3px;
+  gap: 2px;
   width: 100%;
 }
 
 .bar {
   flex: 1;
   min-height: 2px;
-  border-radius: 3px 3px 0 0;
+  border-radius: 4px 4px 0 0;
   position: relative;
   transition: height 0.5s ease;
 }
 
-.bar-add { background: var(--color-success); }
-.bar-deduct { background: var(--color-danger); }
+.bar-add {
+  background: linear-gradient(180deg, #5DDF7F, #34C759);
+}
+
+.bar-deduct {
+  background: linear-gradient(180deg, #FF7875, #FF3B30);
+}
+
+.bar-meal-b {
+  background: linear-gradient(180deg, #FFD28A, #FFB13B);
+}
+
+.bar-meal-l {
+  background: linear-gradient(180deg, #FFB13B, #FF9500);
+}
+
+.bar-meal-d {
+  background: linear-gradient(180deg, #FF9500, #FF7B00);
+}
 
 .bar-val {
   position: absolute;
-  top: -18px;
+  top: -16px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 9px;
+  font-weight: 700;
   white-space: nowrap;
 }
 
-.bar-add .bar-val { color: var(--color-success); }
-.bar-deduct .bar-val { color: var(--color-danger); }
+.bar-add .bar-val { color: #248A3D; }
+.bar-deduct .bar-val { color: #C92119; }
+.bar-meal-b .bar-val,
+.bar-meal-l .bar-val,
+.bar-meal-d .bar-val { color: #C27400; }
 
 .bar-label {
   font-size: 10px;
   color: var(--color-text-secondary);
   margin-top: 6px;
+  font-weight: 500;
 }
 
 .bar-weekday {
   font-size: 9px;
-  color: var(--color-text-placeholder);
+  color: var(--color-text-tertiary);
 }
 
 /* 原因统计 */
 .reason-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .reason-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
 }
 
 .reason-info {
@@ -519,74 +611,43 @@ onMounted(() => {
 }
 
 .reason-text {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
+  color: var(--color-text);
 }
 
 .reason-count {
   font-size: 12px;
   color: var(--color-text-secondary);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .reason-bar-bg {
-  height: 8px;
-  background: var(--color-bg);
-  border-radius: 4px;
+  height: 6px;
+  background: var(--color-bg-input);
+  border-radius: 3px;
   overflow: hidden;
 }
 
 .reason-bar {
   height: 100%;
-  border-radius: 4px;
+  border-radius: 3px;
   transition: width 0.6s ease;
-  min-width: 8px;
+  min-width: 6px;
 }
 
-.reason-bar.add { background: linear-gradient(90deg, #34c759, #5ddf7f); }
-.reason-bar.deduct { background: linear-gradient(90deg, #f54a45, #ff7875); }
-.reason-bar.meal { background: linear-gradient(90deg, #ffb13b, #ffd28a); }
-
-/* 三餐英雄卡 */
-.meal-hero {
-  background: linear-gradient(135deg, #ffb13b 0%, #ff9f0a 100%);
-  color: white;
-  text-align: center;
-}
-.meal-hero-label {
-  font-size: 13px;
-  opacity: 0.85;
-  margin-bottom: 6px;
-}
-.meal-hero-value {
-  font-size: 36px;
-  font-weight: 800;
-  margin-bottom: 10px;
-}
-.meal-hero-breakdown {
-  display: flex;
-  justify-content: space-around;
-  font-size: 12px;
-  opacity: 0.95;
+.reason-bar.add {
+  background: linear-gradient(90deg, #34C759, #5DDF7F);
 }
 
-/* 三餐柱状图 */
-.bar-meal-breakfast { background: #ffd28a; }
-.bar-meal-lunch { background: #ffb13b; }
-.bar-meal-dinner { background: #ff8a00; }
-.bar-meal-breakfast .bar-val,
-.bar-meal-lunch .bar-val,
-.bar-meal-dinner .bar-val { color: #c47700; }
-
-/* 三餐小图标 */
-.section-icon.meal-icon-sm {
-  background: #ff9f0a;
-  width: 22px;
-  height: 22px;
-  font-size: 11px;
+.reason-bar.deduct {
+  background: linear-gradient(90deg, #FF3B30, #FF7875);
 }
 
-.meal-color-sm { color: #ff9f0a; font-weight: 600; }
+.reason-bar.meal {
+  background: linear-gradient(90deg, #FF9500, #FFB13B);
+}
 
 /* 每日明细 */
 .detail-list {
@@ -598,10 +659,12 @@ onMounted(() => {
   display: flex;
   align-items: center;
   padding: 10px 0;
-  border-bottom: 1px solid var(--color-bg);
+  border-bottom: 1px solid rgba(60, 60, 67, 0.08);
 }
 
-.detail-item:last-child { border-bottom: none; }
+.detail-item:last-child {
+  border-bottom: none;
+}
 
 .detail-date {
   display: flex;
@@ -616,15 +679,16 @@ onMounted(() => {
 
 .detail-weekday {
   font-size: 10px;
-  color: var(--color-text-placeholder);
+  color: var(--color-text-tertiary);
 }
 
 .detail-scores {
   flex: 1;
   display: flex;
-  gap: 12px;
+  gap: 10px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .detail-net {
@@ -632,5 +696,10 @@ onMounted(() => {
   font-weight: 700;
   width: 50px;
   text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.meal-color-sm {
+  color: var(--color-warning);
 }
 </style>

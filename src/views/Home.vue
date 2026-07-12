@@ -86,7 +86,7 @@ async function handleSave() {
   try {
     await saveDayRecord(form.value)
     hasExisting.value = true
-    showMessage('保存成功！')
+    showMessage('保存成功')
     loadWeekSummary()
     loadReasonTags()
   } catch (err) {
@@ -123,183 +123,249 @@ onMounted(async () => {
 
 <template>
   <div class="page">
+    <!-- 顶部大标题 -->
     <div class="page-header">
-      <div class="header-top">
+      <div class="header-row">
         <div>
-          <h1>程怿一 · 今日记录</h1>
+          <h1>今日记录</h1>
           <p>{{ today }}</p>
         </div>
-        <div class="header-badge" v-if="hasExisting">已记录</div>
+        <div v-if="hasExisting" class="recorded-badge">
+          <span class="dot"></span>已记录
+        </div>
       </div>
     </div>
 
     <div class="page-content">
-      <!-- 本周速览 -->
-      <div class="week-glance">
-        <div class="glance-item">
-          <span class="glance-value points-positive">+{{ weekSummary.totalAdd }}</span>
-          <span class="glance-label">本周加分</span>
+      <!-- 本周净分大卡 -->
+      <div class="hero-card">
+        <div class="hero-label">本周净分</div>
+        <div
+          class="hero-value"
+          :class="weekSummary.netScore >= 0 ? 'positive' : 'negative'"
+        >
+          {{ weekSummary.netScore >= 0 ? '+' : '' }}{{ weekSummary.netScore }}
         </div>
-        <div class="glance-divider"></div>
-        <div class="glance-item">
-          <span class="glance-value points-negative">-{{ weekSummary.totalDeduct }}</span>
-          <span class="glance-label">本周扣分</span>
-        </div>
-        <div class="glance-divider"></div>
-        <div class="glance-item">
-          <span class="glance-value meal-color">¥{{ weekSummary.totalMeal }}</span>
-          <span class="glance-label">本周三餐</span>
+        <div class="hero-divider"></div>
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <span class="hero-stat-value positive">+{{ weekSummary.totalAdd }}</span>
+            <span class="hero-stat-label">加分</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-value negative">-{{ weekSummary.totalDeduct }}</span>
+            <span class="hero-stat-label">扣分</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-value meal">¥{{ weekSummary.totalMeal.toFixed(2) }}</span>
+            <span class="hero-stat-label">三餐</span>
+          </div>
         </div>
       </div>
 
       <!-- 加分 -->
-      <div class="card section-add">
-        <div class="card-title">
-          <span class="section-icon add-icon">+</span>
-          加分记录
+      <div class="section-header">加分</div>
+      <div class="card">
+        <div class="row-input">
+          <button class="step-btn primary" @click="bump('addPoints', -1)">−</button>
+          <input
+            v-model.number="form.addPoints"
+            class="point-display"
+            type="number"
+            min="0"
+            placeholder="0"
+          />
+          <button class="step-btn primary" @click="bump('addPoints', 1)">+</button>
+          <span class="unit">分</span>
         </div>
-        <div class="form-group">
-          <label class="form-label">加了几分</label>
-          <div class="point-input-row">
-            <button class="point-btn" @click="bump('addPoints', -1)">−</button>
-            <input v-model.number="form.addPoints" class="form-input point-input" type="number" min="0" placeholder="0" />
-            <button class="point-btn" @click="bump('addPoints', 1)">+</button>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">加分原因</label>
-          <textarea v-model="form.addReason" class="form-input form-textarea" placeholder="填写加分原因，多个原因用顿号分隔..." rows="2"></textarea>
+
+        <div class="form-group" style="margin-top: 16px;">
+          <input
+            v-model="form.addReason"
+            class="form-input"
+            placeholder="加分原因（多个用顿号分隔）"
+          />
           <div v-if="addReasonTags.length" class="history-section">
-            <span class="history-label">历史记录</span>
+            <span class="history-label">最近用过</span>
             <div class="quick-tags">
-              <span v-for="tag in addReasonTags" :key="tag" class="quick-tag"
+              <span
+                v-for="tag in addReasonTags"
+                :key="tag"
+                class="quick-tag add"
                 :class="{ selected: isSelected('addReason', tag) }"
-                @click="toggleReason('addReason', tag)">{{ tag }}</span>
+                @click="toggleReason('addReason', tag)"
+              >{{ tag }}</span>
             </div>
           </div>
         </div>
       </div>
 
       <!-- 扣分 -->
-      <div class="card section-deduct">
-        <div class="card-title">
-          <span class="section-icon deduct-icon">−</span>
-          扣分记录
+      <div class="section-header">扣分</div>
+      <div class="card">
+        <div class="row-input">
+          <button class="step-btn danger" @click="bump('deductPoints', -1)">−</button>
+          <input
+            v-model.number="form.deductPoints"
+            class="point-display"
+            type="number"
+            min="0"
+            placeholder="0"
+          />
+          <button class="step-btn danger" @click="bump('deductPoints', 1)">+</button>
+          <span class="unit">分</span>
         </div>
-        <div class="form-group">
-          <label class="form-label">扣了几分</label>
-          <div class="point-input-row">
-            <button class="point-btn" @click="bump('deductPoints', -1)">−</button>
-            <input v-model.number="form.deductPoints" class="form-input point-input" type="number" min="0" placeholder="0" />
-            <button class="point-btn" @click="bump('deductPoints', 1)">+</button>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">扣分原因</label>
-          <textarea v-model="form.deductReason" class="form-input form-textarea" placeholder="填写扣分原因，多个原因用顿号分隔..." rows="2"></textarea>
+
+        <div class="form-group" style="margin-top: 16px;">
+          <input
+            v-model="form.deductReason"
+            class="form-input"
+            placeholder="扣分原因（多个用顿号分隔）"
+          />
           <div v-if="deductReasonTags.length" class="history-section">
-            <span class="history-label">历史记录</span>
+            <span class="history-label">最近用过</span>
             <div class="quick-tags">
-              <span v-for="tag in deductReasonTags" :key="tag" class="quick-tag deduct"
+              <span
+                v-for="tag in deductReasonTags"
+                :key="tag"
+                class="quick-tag deduct"
                 :class="{ selected: isSelected('deductReason', tag) }"
-                @click="toggleReason('deductReason', tag)">{{ tag }}</span>
+                @click="toggleReason('deductReason', tag)"
+              >{{ tag }}</span>
             </div>
           </div>
         </div>
       </div>
 
       <!-- 三餐 -->
-      <div class="card section-meal">
-        <div class="card-title">
-          <span class="section-icon meal-icon">🍱</span>
-          三餐记录
-          <span class="meal-total-badge" v-if="form.breakfastAmount || form.lunchAmount || form.dinnerAmount">
-            ¥{{ (Number(form.breakfastAmount)||0) + (Number(form.lunchAmount)||0) + (Number(form.dinnerAmount)||0) }}
-          </span>
-        </div>
-
+      <div class="section-header">三餐</div>
+      <div class="card">
         <!-- 早餐 -->
-        <div class="meal-block">
-          <div class="meal-name">🌅 早餐</div>
-          <div class="form-group">
-            <label class="form-label">金额</label>
-            <div class="point-input-row">
-              <button class="point-btn small" @click="bump('breakfastAmount', -1)">−</button>
-              <input v-model.number="form.breakfastAmount" class="form-input point-input money" type="number" min="0" step="0.01" placeholder="0.00" />
-              <button class="point-btn small" @click="bump('breakfastAmount', 1)">+</button>
-              <span class="money-unit">元</span>
-            </div>
-          </div>
-          <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label">吃了什么</label>
-            <textarea v-model="form.breakfastContent" class="form-input form-textarea" placeholder="例：包子、牛奶" rows="1"></textarea>
-            <div v-if="breakfastTags.length" class="history-section">
-              <div class="quick-tags">
-                <span v-for="tag in breakfastTags" :key="tag" class="quick-tag meal"
-                  :class="{ selected: isSelected('breakfastContent', tag) }"
-                  @click="toggleReason('breakfastContent', tag)">{{ tag }}</span>
+        <div class="meal-row">
+          <div class="meal-icon">🌅</div>
+          <div class="meal-body">
+            <div class="meal-head">
+              <span class="meal-name">早餐</span>
+              <div class="meal-money-input">
+                <button class="step-btn-mini meal-color" @click="bump('breakfastAmount', -1)">−</button>
+                <input
+                  v-model.number="form.breakfastAmount"
+                  class="meal-money"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0"
+                />
+                <button class="step-btn-mini meal-color" @click="bump('breakfastAmount', 1)">+</button>
+                <span class="money-unit">元</span>
               </div>
             </div>
+            <input
+              v-model="form.breakfastContent"
+              class="form-input meal-content"
+              placeholder="吃了什么"
+            />
+            <div v-if="breakfastTags.length" class="quick-tags" style="margin-top: 8px;">
+              <span
+                v-for="tag in breakfastTags"
+                :key="tag"
+                class="quick-tag meal"
+                :class="{ selected: isSelected('breakfastContent', tag) }"
+                @click="toggleReason('breakfastContent', tag)"
+              >{{ tag }}</span>
+            </div>
           </div>
         </div>
+
+        <div class="meal-divider"></div>
 
         <!-- 午餐 -->
-        <div class="meal-block">
-          <div class="meal-name">☀️ 午餐</div>
-          <div class="form-group">
-            <label class="form-label">金额</label>
-            <div class="point-input-row">
-              <button class="point-btn small" @click="bump('lunchAmount', -1)">−</button>
-              <input v-model.number="form.lunchAmount" class="form-input point-input money" type="number" min="0" step="0.01" placeholder="0.00" />
-              <button class="point-btn small" @click="bump('lunchAmount', 1)">+</button>
-              <span class="money-unit">元</span>
-            </div>
-          </div>
-          <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label">吃了什么</label>
-            <textarea v-model="form.lunchContent" class="form-input form-textarea" placeholder="例：米饭、红烧肉" rows="1"></textarea>
-            <div v-if="lunchTags.length" class="history-section">
-              <div class="quick-tags">
-                <span v-for="tag in lunchTags" :key="tag" class="quick-tag meal"
-                  :class="{ selected: isSelected('lunchContent', tag) }"
-                  @click="toggleReason('lunchContent', tag)">{{ tag }}</span>
+        <div class="meal-row">
+          <div class="meal-icon">☀️</div>
+          <div class="meal-body">
+            <div class="meal-head">
+              <span class="meal-name">午餐</span>
+              <div class="meal-money-input">
+                <button class="step-btn-mini meal-color" @click="bump('lunchAmount', -1)">−</button>
+                <input
+                  v-model.number="form.lunchAmount"
+                  class="meal-money"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0"
+                />
+                <button class="step-btn-mini meal-color" @click="bump('lunchAmount', 1)">+</button>
+                <span class="money-unit">元</span>
               </div>
+            </div>
+            <input
+              v-model="form.lunchContent"
+              class="form-input meal-content"
+              placeholder="吃了什么"
+            />
+            <div v-if="lunchTags.length" class="quick-tags" style="margin-top: 8px;">
+              <span
+                v-for="tag in lunchTags"
+                :key="tag"
+                class="quick-tag meal"
+                :class="{ selected: isSelected('lunchContent', tag) }"
+                @click="toggleReason('lunchContent', tag)"
+              >{{ tag }}</span>
             </div>
           </div>
         </div>
 
+        <div class="meal-divider"></div>
+
         <!-- 晚餐 -->
-        <div class="meal-block">
-          <div class="meal-name">🌙 晚餐</div>
-          <div class="form-group">
-            <label class="form-label">金额</label>
-            <div class="point-input-row">
-              <button class="point-btn small" @click="bump('dinnerAmount', -1)">−</button>
-              <input v-model.number="form.dinnerAmount" class="form-input point-input money" type="number" min="0" step="0.01" placeholder="0.00" />
-              <button class="point-btn small" @click="bump('dinnerAmount', 1)">+</button>
-              <span class="money-unit">元</span>
-            </div>
-          </div>
-          <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label">吃了什么</label>
-            <textarea v-model="form.dinnerContent" class="form-input form-textarea" placeholder="例：面条、青菜" rows="1"></textarea>
-            <div v-if="dinnerTags.length" class="history-section">
-              <div class="quick-tags">
-                <span v-for="tag in dinnerTags" :key="tag" class="quick-tag meal"
-                  :class="{ selected: isSelected('dinnerContent', tag) }"
-                  @click="toggleReason('dinnerContent', tag)">{{ tag }}</span>
+        <div class="meal-row">
+          <div class="meal-icon">🌙</div>
+          <div class="meal-body">
+            <div class="meal-head">
+              <span class="meal-name">晚餐</span>
+              <div class="meal-money-input">
+                <button class="step-btn-mini meal-color" @click="bump('dinnerAmount', -1)">−</button>
+                <input
+                  v-model.number="form.dinnerAmount"
+                  class="meal-money"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0"
+                />
+                <button class="step-btn-mini meal-color" @click="bump('dinnerAmount', 1)">+</button>
+                <span class="money-unit">元</span>
               </div>
+            </div>
+            <input
+              v-model="form.dinnerContent"
+              class="form-input meal-content"
+              placeholder="吃了什么"
+            />
+            <div v-if="dinnerTags.length" class="quick-tags" style="margin-top: 8px;">
+              <span
+                v-for="tag in dinnerTags"
+                :key="tag"
+                class="quick-tag meal"
+                :class="{ selected: isSelected('dinnerContent', tag) }"
+                @click="toggleReason('dinnerContent', tag)"
+              >{{ tag }}</span>
             </div>
           </div>
         </div>
       </div>
 
       <!-- 保存按钮 -->
-      <button class="btn btn-primary btn-lg save-btn" :disabled="saving" @click="handleSave">
-        {{ saving ? '保存中...' : (hasExisting ? '更新今日记录' : '保存今日记录') }}
+      <button
+        class="btn btn-lg btn-primary save-btn"
+        :disabled="saving"
+        @click="handleSave"
+      >
+        {{ saving ? '保存中…' : (hasExisting ? '更新今日记录' : '保存今日记录') }}
       </button>
 
-      <p class="save-hint" v-if="hasExisting">
+      <p v-if="hasExisting" class="save-hint">
         今天已有记录，再次保存将覆盖之前的内容
       </p>
     </div>
@@ -311,194 +377,267 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.header-top {
+/* 顶部头部 */
+.header-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.header-badge {
+.recorded-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   background: var(--color-success-light);
-  color: var(--color-success);
+  color: #248A3D;
   font-size: 12px;
   font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 12px;
+  padding: 5px 10px;
+  border-radius: 10px;
 }
 
-/* 本周速览 */
-.week-glance {
-  display: flex;
-  align-items: center;
+.recorded-badge .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-success);
+}
+
+/* 本周净分英雄卡 */
+.hero-card {
   background: var(--color-bg-white);
-  border-radius: var(--radius-md);
-  padding: 14px 0;
+  border-radius: var(--radius-lg);
+  padding: 22px 20px 16px;
   margin-bottom: 12px;
+  text-align: center;
   box-shadow: var(--shadow-sm);
 }
 
-.glance-item {
-  flex: 1;
+.hero-label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.hero-value {
+  font-size: 56px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  line-height: 1.1;
+}
+
+.hero-value.positive { color: var(--color-primary); }
+.hero-value.negative { color: var(--color-danger); }
+
+.hero-divider {
+  height: 1px;
+  background: rgba(60, 60, 67, 0.08);
+  margin: 14px 0 12px;
+}
+
+.hero-stats {
+  display: flex;
+  justify-content: space-around;
+}
+
+.hero-stat {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 }
 
-.glance-value {
-  font-size: 20px;
+.hero-stat-value {
+  font-size: 17px;
   font-weight: 700;
 }
 
-.glance-label {
+.hero-stat-value.positive { color: var(--color-success); }
+.hero-stat-value.negative { color: var(--color-danger); }
+.hero-stat-value.meal { color: var(--color-warning); }
+
+.hero-stat-label {
   font-size: 11px;
   color: var(--color-text-secondary);
 }
 
-.glance-divider {
-  width: 1px;
-  height: 30px;
-  background: var(--color-border);
-}
-
-.meal-color { color: #ff9f0a; }
-
-/* 区域样式 */
-.section-add { border-left: 3px solid var(--color-success); }
-.section-deduct { border-left: 3px solid var(--color-danger); }
-.section-meal { border-left: 3px solid #ff9f0a; }
-
-.section-icon {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 700;
-  color: white;
-}
-.add-icon { background: var(--color-success); }
-.deduct-icon { background: var(--color-danger); }
-.meal-icon { background: #ff9f0a; font-size: 12px; }
-
-/* 分数/金额输入 */
-.point-input-row {
+/* 行式输入 (加减按钮 + 数字) */
+.row-input {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
-.point-btn {
-  width: 36px;
-  height: 36px;
+.step-btn {
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  border: 1.5px solid var(--color-border);
-  background: var(--color-bg-white);
-  font-size: 18px;
+  border: none;
+  font-size: 22px;
   font-weight: 500;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
-  color: var(--color-text);
+  color: white;
+  transition: transform 0.1s;
 }
 
-.point-btn.small { width: 32px; height: 32px; font-size: 16px; }
-.point-btn:active { transform: scale(0.92); background: var(--color-bg); }
+.step-btn:active { transform: scale(0.9); }
 
-.point-input {
-  width: 70px;
+.step-btn.primary { background: var(--color-primary); }
+.step-btn.danger { background: var(--color-danger); }
+
+.point-display {
+  flex: 1;
   text-align: center;
-  font-size: 24px;
+  font-size: 32px;
   font-weight: 700;
   border: none;
-  border-bottom: 2px solid var(--color-border);
-  border-radius: 0;
+  background: transparent;
+  color: var(--color-text);
+  outline: none;
   padding: 4px 0;
 }
 
-.point-input.money { font-size: 22px; color: #ff9f0a; }
-.point-input:focus { border-color: var(--color-primary); box-shadow: none; }
+.point-display:focus {
+  color: var(--color-primary);
+}
 
-.money-unit {
-  font-size: 13px;
+.unit {
+  font-size: 15px;
   color: var(--color-text-secondary);
+  width: 24px;
+  text-align: right;
 }
 
-/* 文本域 */
-.form-textarea {
-  resize: none;
-  line-height: 1.5;
-}
-
-/* 历史记录区 */
+/* 历史候选区 */
 .history-section {
   margin-top: 10px;
 }
 
 .history-label {
-  font-size: 11px;
-  color: var(--color-text-placeholder);
-  margin-bottom: 6px;
   display: block;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  margin-bottom: 6px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-/* 扣分主题 */
-.quick-tag.deduct:hover,
-.quick-tag.deduct.selected {
-  border-color: var(--color-danger);
-  background: var(--color-danger-light);
-  color: var(--color-danger);
+/* 三餐行 */
+.meal-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
 }
 
-/* 三餐主题 */
-.quick-tag.meal:hover,
-.quick-tag.meal.selected {
-  border-color: #ff9f0a;
-  background: #fff4e0;
-  color: #c47700;
+.meal-icon {
+  font-size: 22px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--color-warning-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
-/* 三餐模块 */
-.meal-block {
-  padding: 12px;
-  border-radius: var(--radius-md);
-  background: #fafafa;
-  margin-bottom: 12px;
+.meal-body {
+  flex: 1;
+  min-width: 0;
 }
-.meal-block:last-child { margin-bottom: 0; }
+
+.meal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
 
 .meal-name {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
-  margin-bottom: 8px;
   color: var(--color-text);
 }
 
-.meal-total-badge {
-  margin-left: auto;
-  background: #fff4e0;
-  color: #ff9f0a;
-  font-size: 13px;
+.meal-money-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.step-btn-mini {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--color-warning-light);
+  color: #C27400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s;
+}
+
+.step-btn-mini:active { transform: scale(0.9); }
+
+.meal-money {
+  width: 64px;
+  text-align: center;
+  font-size: 16px;
   font-weight: 700;
-  padding: 4px 10px;
-  border-radius: 12px;
+  color: var(--color-warning);
+  background: var(--color-warning-light);
+  border: none;
+  border-radius: 8px;
+  padding: 4px 6px;
+  outline: none;
+  font-family: inherit;
+}
+
+.meal-money:focus {
+  background: #FFE5C4;
+}
+
+.money-unit {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.meal-content {
+  font-size: 15px;
+  padding: 10px 12px;
+}
+
+.meal-divider {
+  height: 1px;
+  background: rgba(60, 60, 67, 0.08);
+  margin: 14px 0;
 }
 
 /* 保存按钮 */
-.save-btn { margin-top: 4px; }
+.save-btn {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
 .save-hint {
   text-align: center;
   font-size: 12px;
-  color: var(--color-text-placeholder);
-  margin-top: 8px;
-  padding-bottom: 20px;
+  color: var(--color-text-tertiary);
+  margin-top: 6px;
+  padding-bottom: 24px;
 }
 
-/* Toast */
-.fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
+/* Toast 动画 */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.25s; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>
