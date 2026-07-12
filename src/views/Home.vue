@@ -167,7 +167,7 @@ onMounted(async () => {
       <div class="section-header">加分</div>
       <div class="card">
         <div class="row-input">
-          <button class="step-btn primary" @click="bump('addPoints', -1)">−</button>
+          <button class="step-btn add" @click="bump('addPoints', -1)">−</button>
           <input
             v-model.number="form.addPoints"
             class="point-display"
@@ -175,7 +175,7 @@ onMounted(async () => {
             min="0"
             placeholder="0"
           />
-          <button class="step-btn primary" @click="bump('addPoints', 1)">+</button>
+          <button class="step-btn add" @click="bump('addPoints', 1)">+</button>
           <span class="unit">分</span>
         </div>
 
@@ -204,7 +204,7 @@ onMounted(async () => {
       <div class="section-header">扣分</div>
       <div class="card">
         <div class="row-input">
-          <button class="step-btn danger" @click="bump('deductPoints', -1)">−</button>
+          <button class="step-btn deduct" @click="bump('deductPoints', -1)">−</button>
           <input
             v-model.number="form.deductPoints"
             class="point-display"
@@ -212,7 +212,7 @@ onMounted(async () => {
             min="0"
             placeholder="0"
           />
-          <button class="step-btn danger" @click="bump('deductPoints', 1)">+</button>
+          <button class="step-btn deduct" @click="bump('deductPoints', 1)">+</button>
           <span class="unit">分</span>
         </div>
 
@@ -247,7 +247,7 @@ onMounted(async () => {
             <div class="meal-head">
               <span class="meal-name">早餐</span>
               <div class="meal-money-input">
-                <button class="step-btn-mini meal-color" @click="bump('breakfastAmount', -1)">−</button>
+                <button class="step-btn meal" @click="bump('breakfastAmount', -1)">−</button>
                 <input
                   v-model.number="form.breakfastAmount"
                   class="meal-money"
@@ -256,7 +256,7 @@ onMounted(async () => {
                   step="0.01"
                   placeholder="0"
                 />
-                <button class="step-btn-mini meal-color" @click="bump('breakfastAmount', 1)">+</button>
+                <button class="step-btn meal" @click="bump('breakfastAmount', 1)">+</button>
                 <span class="money-unit">元</span>
               </div>
             </div>
@@ -286,7 +286,7 @@ onMounted(async () => {
             <div class="meal-head">
               <span class="meal-name">午餐</span>
               <div class="meal-money-input">
-                <button class="step-btn-mini meal-color" @click="bump('lunchAmount', -1)">−</button>
+                <button class="step-btn meal" @click="bump('lunchAmount', -1)">−</button>
                 <input
                   v-model.number="form.lunchAmount"
                   class="meal-money"
@@ -295,7 +295,7 @@ onMounted(async () => {
                   step="0.01"
                   placeholder="0"
                 />
-                <button class="step-btn-mini meal-color" @click="bump('lunchAmount', 1)">+</button>
+                <button class="step-btn meal" @click="bump('lunchAmount', 1)">+</button>
                 <span class="money-unit">元</span>
               </div>
             </div>
@@ -325,7 +325,7 @@ onMounted(async () => {
             <div class="meal-head">
               <span class="meal-name">晚餐</span>
               <div class="meal-money-input">
-                <button class="step-btn-mini meal-color" @click="bump('dinnerAmount', -1)">−</button>
+                <button class="step-btn meal" @click="bump('dinnerAmount', -1)">−</button>
                 <input
                   v-model.number="form.dinnerAmount"
                   class="meal-money"
@@ -334,7 +334,7 @@ onMounted(async () => {
                   step="0.01"
                   placeholder="0"
                 />
-                <button class="step-btn-mini meal-color" @click="bump('dinnerAmount', 1)">+</button>
+                <button class="step-btn meal" @click="bump('dinnerAmount', 1)">+</button>
                 <span class="money-unit">元</span>
               </div>
             </div>
@@ -462,32 +462,48 @@ onMounted(async () => {
   color: var(--color-text-secondary);
 }
 
-/* 行式输入 (加减按钮 + 数字) */
+/* 统一加减号按钮 - 所有类型共用 */
 .row-input {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .step-btn {
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: none;
-  font-size: 22px;
-  font-weight: 500;
+  font-size: 18px;
+  font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  line-height: 1;
   transition: transform 0.1s;
+  font-family: inherit;
 }
 
-.step-btn:active { transform: scale(0.9); }
+.step-btn:active {
+  transform: scale(0.9);
+}
 
-.step-btn.primary { background: var(--color-primary); }
-.step-btn.danger { background: var(--color-danger); }
+/* 颜色变体 - 浅色背景 + 彩色符号 */
+.step-btn.add {
+  background: var(--color-success-light);
+  color: #248A3D;
+}
+
+.step-btn.deduct {
+  background: var(--color-danger-light);
+  color: #C92119;
+}
+
+.step-btn.meal {
+  background: var(--color-warning-light);
+  color: #C27400;
+}
 
 .point-display {
   flex: 1;
@@ -499,6 +515,7 @@ onMounted(async () => {
   color: var(--color-text);
   outline: none;
   padding: 4px 0;
+  font-family: inherit;
 }
 
 .point-display:focus {
@@ -568,29 +585,11 @@ onMounted(async () => {
 .meal-money-input {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
-
-.step-btn-mini {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: none;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  background: var(--color-warning-light);
-  color: #C27400;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.1s;
-}
-
-.step-btn-mini:active { transform: scale(0.9); }
 
 .meal-money {
-  width: 64px;
+  width: 70px;
   text-align: center;
   font-size: 16px;
   font-weight: 700;
@@ -598,7 +597,7 @@ onMounted(async () => {
   background: var(--color-warning-light);
   border: none;
   border-radius: 8px;
-  padding: 4px 6px;
+  padding: 5px 6px;
   outline: none;
   font-family: inherit;
 }
