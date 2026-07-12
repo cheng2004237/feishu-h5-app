@@ -28,7 +28,7 @@ export default async function handler(req, res) {
     const headers = await feishuHeaders()
     const baseUrl = bitableBaseUrl()
 
-    // 1. 先查询当天是否已有记录
+    // 1. 拉取所有记录，按 date 精确匹配（飞书的 filter is 筛选对文本字段不稳定）
     const existingId = await findRecordByDate(baseUrl, headers, date)
 
     const fields = {
@@ -76,24 +76,43 @@ export default async function handler(req, res) {
 
 /**
  * 按日期查找已有记录，返回 record_id 或 null
+ * 策略：拉取所有记录（多页），前端按日期精确匹配
  */
 async function findRecordByDate(baseUrl, headers, date) {
-  const filter = JSON.stringify({
-    conjunction: 'and',
-    conditions: [
-      { field_name: '日期', operator: 'is', value: [date] },
-    ],
-  })
+  let allItems = []
+  let pageToken = ''
 
-  const params = new URLSearchParams({ filter, page_size: '1' })
-  const response = await fetch(`${baseUrl}?${params}`, { headers })
-  const data = await response.json()
+  do {
+    const params = new URLSearchParams({ page_size: '500' })
+    if (pageToken) params.set('page_token', pageToken)
 
-  if (data.code !== 0) {
-    console.error('查询已有记录失败:', data)
-    return null
+    const response = await fetch(`${baseUrl}?${params}`, { headers })
+    const data = await response.json()
+
+    if (data.code !== 0) {
+      console.error('查询已有记录失败:', data)
+      return null
+    }
+
+    allItems = allItems.concat(data.data?.items || [])
+    pageToken = data.data?.page_token || ''
+  } while (pageToken)
+
+  // 精确匹配日期字符串
+  const target = String(date).trim()
+  for (const item of allItems) {
+    const fieldValue = item.fields?.['日期']
+    const fieldText =
+      typeof fieldValue === 'string'
+        ? fieldValue.trim()
+        : Array.isArray(fieldValue)
+        ? fieldValue.map((s) => s.text || '').join('').trim()
+        : ''
+
+    if (fieldText === target) {
+      return item.record_id
+    }
   }
 
-  const items = data.data?.items || []
-  return items.length > 0 ? items[0].record_id : null
+  return null
 }
