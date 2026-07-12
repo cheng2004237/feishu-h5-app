@@ -1,66 +1,83 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { getDayRecord, saveDayRecord, todayKey, getThisWeekRecords, summarizeRecords, getReasonHistory } from '../utils/storage.js'
+import {
+  getDayRecord,
+  saveDayRecord,
+  todayKey,
+  getThisWeekRecords,
+  summarizeRecords,
+  getReasonHistory,
+  emptyRecord,
+} from '../utils/storage.js'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn.js'
 
 dayjs.locale('zh-cn')
 
-const router = useRouter()
-
 const today = dayjs().format('YYYY年M月D日 dddd')
 const dateKey = todayKey()
 
-// 表单数据
-const form = ref({
-  date: dateKey,
-  addPoints: 0,
-  addReason: '',
-  deductPoints: 0,
-  deductReason: '',
-})
+const form = ref(emptyRecord(dateKey))
 
-// 状态
-const saved = ref(false)
 const showToast = ref(false)
 const toastMessage = ref('')
-const hasExisting = ref(false) // 今天是否已有记录
+const hasExisting = ref(false)
 const saving = ref(false)
-const loading = ref(false)
 
-// 本周简要统计
-const weekSummary = ref({ totalAdd: 0, totalDeduct: 0, netScore: 0 })
+const weekSummary = ref({
+  totalAdd: 0,
+  totalDeduct: 0,
+  netScore: 0,
+  totalMeal: 0,
+})
 
-// 历史候选原因（从之前保存的记录中自动积累）
 const addReasonTags = ref([])
 const deductReasonTags = ref([])
+const breakfastTags = ref([])
+const lunchTags = ref([])
+const dinnerTags = ref([])
 
 function loadReasonTags() {
   addReasonTags.value = getReasonHistory('add')
   deductReasonTags.value = getReasonHistory('deduct')
+  breakfastTags.value = getReasonHistory('breakfast')
+  lunchTags.value = getReasonHistory('lunch')
+  dinnerTags.value = getReasonHistory('dinner')
 }
 
-function selectAddReason(tag) {
-  const parts = form.value.addReason ? form.value.addReason.split(/[、]+/).map(s => s.trim()).filter(Boolean) : []
+function bump(field, delta) {
+  const cur = Number(form.value[field]) || 0
+  form.value[field] = Math.max(0, cur + delta)
+}
+
+function toggleReason(field, tag) {
+  const parts = form.value[field]
+    ? form.value[field].split(/[、]+/).map((s) => s.trim()).filter(Boolean)
+    : []
   const idx = parts.indexOf(tag)
   if (idx >= 0) {
     parts.splice(idx, 1)
   } else {
     parts.push(tag)
   }
-  form.value.addReason = parts.join('、')
+  form.value[field] = parts.join('、')
 }
 
-function selectDeductReason(tag) {
-  const parts = form.value.deductReason ? form.value.deductReason.split(/[、]+/).map(s => s.trim()).filter(Boolean) : []
-  const idx = parts.indexOf(tag)
-  if (idx >= 0) {
-    parts.splice(idx, 1)
-  } else {
-    parts.push(tag)
-  }
-  form.value.deductReason = parts.join('、')
+function isSelected(field, tag) {
+  if (!form.value[field]) return false
+  return form.value[field].split(/[、]+/).map((s) => s.trim()).includes(tag)
+}
+
+function hasAnyContent(record) {
+  return (
+    Number(record.addPoints) || Number(record.deductPoints)
+    || Number(record.breakfastAmount) || Number(record.lunchAmount) || Number(record.dinnerAmount)
+    || (record.addReason && record.addReason.trim())
+    || (record.deductReason && record.deductReason.trim())
+    || (record.breakfastContent && record.breakfastContent.trim())
+    || (record.lunchContent && record.lunchContent.trim())
+    || (record.dinnerContent && record.dinnerContent.trim())
+  )
 }
 
 async function handleSave() {
@@ -68,7 +85,6 @@ async function handleSave() {
   saving.value = true
   try {
     await saveDayRecord(form.value)
-    saved.value = true
     hasExisting.value = true
     showMessage('保存成功！')
     loadWeekSummary()
@@ -89,24 +105,17 @@ function showMessage(msg) {
 
 async function loadWeekSummary() {
   const weekRecords = await getThisWeekRecords()
-  const summary = summarizeRecords(weekRecords)
-  weekSummary.value = summary
+  weekSummary.value = summarizeRecords(weekRecords)
 }
 
 onMounted(async () => {
-  loading.value = true
   try {
-    // 加载今天已有的记录
     const existing = await getDayRecord(dateKey)
-    if (existing.addPoints || existing.deductPoints || existing.addReason || existing.deductReason) {
-      form.value = { ...existing }
-      hasExisting.value = true
-    }
+    form.value = { ...existing }
+    if (hasAnyContent(existing)) hasExisting.value = true
     await loadWeekSummary()
   } catch (err) {
     console.error('加载数据失败:', err)
-  } finally {
-    loading.value = false
   }
   loadReasonTags()
 })
@@ -114,11 +123,10 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <!-- 头部 -->
     <div class="page-header">
       <div class="header-top">
         <div>
-          <h1>程怿一 · 今日积分</h1>
+          <h1>程怿一 · 今日记录</h1>
           <p>{{ today }}</p>
         </div>
         <div class="header-badge" v-if="hasExisting">已记录</div>
@@ -139,114 +147,150 @@ onMounted(async () => {
         </div>
         <div class="glance-divider"></div>
         <div class="glance-item">
-          <span class="glance-value" :class="weekSummary.netScore >= 0 ? 'points-positive' : 'points-negative'">
-            {{ weekSummary.netScore >= 0 ? '+' : '' }}{{ weekSummary.netScore }}
-          </span>
-          <span class="glance-label">本周净分</span>
+          <span class="glance-value meal-color">¥{{ weekSummary.totalMeal }}</span>
+          <span class="glance-label">本周三餐</span>
         </div>
       </div>
 
-      <!-- 加分区域 -->
+      <!-- 加分 -->
       <div class="card section-add">
         <div class="card-title">
           <span class="section-icon add-icon">+</span>
           加分记录
         </div>
-
         <div class="form-group">
           <label class="form-label">加了几分</label>
           <div class="point-input-row">
-            <button class="point-btn" @click="form.addPoints = Math.max(0, form.addPoints - 1)">−</button>
-            <input
-              v-model.number="form.addPoints"
-              class="form-input point-input"
-              type="number"
-              min="0"
-              placeholder="0"
-            />
-            <button class="point-btn" @click="form.addPoints++">+</button>
+            <button class="point-btn" @click="bump('addPoints', -1)">−</button>
+            <input v-model.number="form.addPoints" class="form-input point-input" type="number" min="0" placeholder="0" />
+            <button class="point-btn" @click="bump('addPoints', 1)">+</button>
           </div>
         </div>
-
         <div class="form-group">
           <label class="form-label">加分原因</label>
-          <textarea
-            v-model="form.addReason"
-            class="form-input form-textarea"
-            placeholder="填写加分原因，多个原因可用顿号分隔..."
-            rows="2"
-          ></textarea>
+          <textarea v-model="form.addReason" class="form-input form-textarea" placeholder="填写加分原因，多个原因用顿号分隔..." rows="2"></textarea>
           <div v-if="addReasonTags.length" class="history-section">
             <span class="history-label">历史记录</span>
             <div class="quick-tags">
-              <span
-                v-for="tag in addReasonTags"
-                :key="tag"
-                class="quick-tag"
-                :class="{ selected: form.addReason.includes(tag) }"
-                @click="selectAddReason(tag)"
-              >{{ tag }}</span>
+              <span v-for="tag in addReasonTags" :key="tag" class="quick-tag"
+                :class="{ selected: isSelected('addReason', tag) }"
+                @click="toggleReason('addReason', tag)">{{ tag }}</span>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 扣分区域 -->
+      <!-- 扣分 -->
       <div class="card section-deduct">
         <div class="card-title">
           <span class="section-icon deduct-icon">−</span>
           扣分记录
         </div>
-
         <div class="form-group">
           <label class="form-label">扣了几分</label>
           <div class="point-input-row">
-            <button class="point-btn" @click="form.deductPoints = Math.max(0, form.deductPoints - 1)">−</button>
-            <input
-              v-model.number="form.deductPoints"
-              class="form-input point-input"
-              type="number"
-              min="0"
-              placeholder="0"
-            />
-            <button class="point-btn" @click="form.deductPoints++">+</button>
+            <button class="point-btn" @click="bump('deductPoints', -1)">−</button>
+            <input v-model.number="form.deductPoints" class="form-input point-input" type="number" min="0" placeholder="0" />
+            <button class="point-btn" @click="bump('deductPoints', 1)">+</button>
           </div>
         </div>
-
         <div class="form-group">
           <label class="form-label">扣分原因</label>
-          <textarea
-            v-model="form.deductReason"
-            class="form-input form-textarea"
-            placeholder="填写扣分原因，多个原因可用顿号分隔..."
-            rows="2"
-          ></textarea>
+          <textarea v-model="form.deductReason" class="form-input form-textarea" placeholder="填写扣分原因，多个原因用顿号分隔..." rows="2"></textarea>
           <div v-if="deductReasonTags.length" class="history-section">
             <span class="history-label">历史记录</span>
             <div class="quick-tags">
-              <span
-                v-for="tag in deductReasonTags"
-                :key="tag"
-                class="quick-tag deduct"
-                :class="{ selected: form.deductReason.includes(tag) }"
-                @click="selectDeductReason(tag)"
-              >{{ tag }}</span>
+              <span v-for="tag in deductReasonTags" :key="tag" class="quick-tag deduct"
+                :class="{ selected: isSelected('deductReason', tag) }"
+                @click="toggleReason('deductReason', tag)">{{ tag }}</span>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 今日小结 -->
-      <div class="card today-summary" v-if="form.addPoints || form.deductPoints">
-        <div class="card-title">今日小结</div>
-        <div class="summary-row">
-          <span>今日净得分</span>
-          <span
-            class="summary-score"
-            :class="form.addPoints - form.deductPoints >= 0 ? 'points-positive' : 'points-negative'"
-          >
-            {{ form.addPoints - form.deductPoints >= 0 ? '+' : '' }}{{ form.addPoints - form.deductPoints }} 分
+      <!-- 三餐 -->
+      <div class="card section-meal">
+        <div class="card-title">
+          <span class="section-icon meal-icon">🍱</span>
+          三餐记录
+          <span class="meal-total-badge" v-if="form.breakfastAmount || form.lunchAmount || form.dinnerAmount">
+            ¥{{ (Number(form.breakfastAmount)||0) + (Number(form.lunchAmount)||0) + (Number(form.dinnerAmount)||0) }}
           </span>
+        </div>
+
+        <!-- 早餐 -->
+        <div class="meal-block">
+          <div class="meal-name">🌅 早餐</div>
+          <div class="form-group">
+            <label class="form-label">金额</label>
+            <div class="point-input-row">
+              <button class="point-btn small" @click="bump('breakfastAmount', -1)">−</button>
+              <input v-model.number="form.breakfastAmount" class="form-input point-input money" type="number" min="0" step="0.01" placeholder="0.00" />
+              <button class="point-btn small" @click="bump('breakfastAmount', 1)">+</button>
+              <span class="money-unit">元</span>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label">吃了什么</label>
+            <textarea v-model="form.breakfastContent" class="form-input form-textarea" placeholder="例：包子、牛奶" rows="1"></textarea>
+            <div v-if="breakfastTags.length" class="history-section">
+              <div class="quick-tags">
+                <span v-for="tag in breakfastTags" :key="tag" class="quick-tag meal"
+                  :class="{ selected: isSelected('breakfastContent', tag) }"
+                  @click="toggleReason('breakfastContent', tag)">{{ tag }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 午餐 -->
+        <div class="meal-block">
+          <div class="meal-name">☀️ 午餐</div>
+          <div class="form-group">
+            <label class="form-label">金额</label>
+            <div class="point-input-row">
+              <button class="point-btn small" @click="bump('lunchAmount', -1)">−</button>
+              <input v-model.number="form.lunchAmount" class="form-input point-input money" type="number" min="0" step="0.01" placeholder="0.00" />
+              <button class="point-btn small" @click="bump('lunchAmount', 1)">+</button>
+              <span class="money-unit">元</span>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label">吃了什么</label>
+            <textarea v-model="form.lunchContent" class="form-input form-textarea" placeholder="例：米饭、红烧肉" rows="1"></textarea>
+            <div v-if="lunchTags.length" class="history-section">
+              <div class="quick-tags">
+                <span v-for="tag in lunchTags" :key="tag" class="quick-tag meal"
+                  :class="{ selected: isSelected('lunchContent', tag) }"
+                  @click="toggleReason('lunchContent', tag)">{{ tag }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 晚餐 -->
+        <div class="meal-block">
+          <div class="meal-name">🌙 晚餐</div>
+          <div class="form-group">
+            <label class="form-label">金额</label>
+            <div class="point-input-row">
+              <button class="point-btn small" @click="bump('dinnerAmount', -1)">−</button>
+              <input v-model.number="form.dinnerAmount" class="form-input point-input money" type="number" min="0" step="0.01" placeholder="0.00" />
+              <button class="point-btn small" @click="bump('dinnerAmount', 1)">+</button>
+              <span class="money-unit">元</span>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label">吃了什么</label>
+            <textarea v-model="form.dinnerContent" class="form-input form-textarea" placeholder="例：面条、青菜" rows="1"></textarea>
+            <div v-if="dinnerTags.length" class="history-section">
+              <div class="quick-tags">
+                <span v-for="tag in dinnerTags" :key="tag" class="quick-tag meal"
+                  :class="{ selected: isSelected('dinnerContent', tag) }"
+                  @click="toggleReason('dinnerContent', tag)">{{ tag }}</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -260,7 +304,6 @@ onMounted(async () => {
       </p>
     </div>
 
-    <!-- Toast -->
     <Transition name="fade">
       <div v-if="showToast" class="toast">{{ toastMessage }}</div>
     </Transition>
@@ -318,14 +361,12 @@ onMounted(async () => {
   background: var(--color-border);
 }
 
-/* 区域样式 */
-.section-add {
-  border-left: 3px solid var(--color-success);
-}
+.meal-color { color: #ff9f0a; }
 
-.section-deduct {
-  border-left: 3px solid var(--color-danger);
-}
+/* 区域样式 */
+.section-add { border-left: 3px solid var(--color-success); }
+.section-deduct { border-left: 3px solid var(--color-danger); }
+.section-meal { border-left: 3px solid #ff9f0a; }
 
 .section-icon {
   width: 22px;
@@ -338,29 +379,24 @@ onMounted(async () => {
   font-weight: 700;
   color: white;
 }
+.add-icon { background: var(--color-success); }
+.deduct-icon { background: var(--color-danger); }
+.meal-icon { background: #ff9f0a; font-size: 12px; }
 
-.add-icon {
-  background: var(--color-success);
-}
-
-.deduct-icon {
-  background: var(--color-danger);
-}
-
-/* 分数输入 */
+/* 分数/金额输入 */
 .point-input-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .point-btn {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: 1.5px solid var(--color-border);
   background: var(--color-bg-white);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 500;
   cursor: pointer;
   display: flex;
@@ -370,15 +406,13 @@ onMounted(async () => {
   color: var(--color-text);
 }
 
-.point-btn:active {
-  transform: scale(0.92);
-  background: var(--color-bg);
-}
+.point-btn.small { width: 32px; height: 32px; font-size: 16px; }
+.point-btn:active { transform: scale(0.92); background: var(--color-bg); }
 
 .point-input {
-  width: 80px;
+  width: 70px;
   text-align: center;
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   border: none;
   border-bottom: 2px solid var(--color-border);
@@ -386,9 +420,12 @@ onMounted(async () => {
   padding: 4px 0;
 }
 
-.point-input:focus {
-  border-color: var(--color-primary);
-  box-shadow: none;
+.point-input.money { font-size: 22px; color: #ff9f0a; }
+.point-input:focus { border-color: var(--color-primary); box-shadow: none; }
+
+.money-unit {
+  font-size: 13px;
+  color: var(--color-text-secondary);
 }
 
 /* 文本域 */
@@ -409,7 +446,7 @@ onMounted(async () => {
   display: block;
 }
 
-/* 快捷标签 - 扣分主题 */
+/* 扣分主题 */
 .quick-tag.deduct:hover,
 .quick-tag.deduct.selected {
   border-color: var(--color-danger);
@@ -417,28 +454,42 @@ onMounted(async () => {
   color: var(--color-danger);
 }
 
-/* 今日小结 */
-.today-summary {
-  background: linear-gradient(135deg, #f5f7ff 0%, #f0f5ff 100%);
+/* 三餐主题 */
+.quick-tag.meal:hover,
+.quick-tag.meal.selected {
+  border-color: #ff9f0a;
+  background: #fff4e0;
+  color: #c47700;
 }
 
-.summary-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 15px;
+/* 三餐模块 */
+.meal-block {
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: #fafafa;
+  margin-bottom: 12px;
+}
+.meal-block:last-child { margin-bottom: 0; }
+
+.meal-name {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--color-text);
 }
 
-.summary-score {
-  font-size: 24px;
+.meal-total-badge {
+  margin-left: auto;
+  background: #fff4e0;
+  color: #ff9f0a;
+  font-size: 13px;
   font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 12px;
 }
 
 /* 保存按钮 */
-.save-btn {
-  margin-top: 4px;
-}
-
+.save-btn { margin-top: 4px; }
 .save-hint {
   text-align: center;
   font-size: 12px;
@@ -447,13 +498,7 @@ onMounted(async () => {
   padding-bottom: 20px;
 }
 
-/* Toast 动画 */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
+/* Toast */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

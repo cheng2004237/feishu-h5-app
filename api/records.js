@@ -57,6 +57,12 @@ export default async function handler(req, res) {
           addReason: extractText(f['加分原因']),
           deductPoints: Number(f['扣分']) || 0,
           deductReason: extractText(f['扣分原因']),
+          breakfastAmount: Number(f['早餐金额']) || 0,
+          breakfastContent: extractText(f['早餐内容']),
+          lunchAmount: Number(f['午餐金额']) || 0,
+          lunchContent: extractText(f['午餐内容']),
+          dinnerAmount: Number(f['晚餐金额']) || 0,
+          dinnerContent: extractText(f['晚餐内容']),
         }
       })
       .filter((r) => r.date >= start && r.date <= end)

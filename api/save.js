@@ -37,6 +37,12 @@ export default async function handler(req, res) {
       '加分原因': addReason || '',
       '扣分': Number(deductPoints) || 0,
       '扣分原因': deductReason || '',
+      '早餐金额': Number(req.body.breakfastAmount) || 0,
+      '早餐内容': req.body.breakfastContent || '',
+      '午餐金额': Number(req.body.lunchAmount) || 0,
+      '午餐内容': req.body.lunchContent || '',
+      '晚餐金额': Number(req.body.dinnerAmount) || 0,
+      '晚餐内容': req.body.dinnerContent || '',
     }
 
     let result

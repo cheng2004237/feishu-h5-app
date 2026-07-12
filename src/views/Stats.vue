@@ -57,6 +57,22 @@ const barMaxValue = computed(() => {
   )
 })
 
+// 柱状图：每日三餐
+const mealDaysWithData = computed(() => {
+  if (!summary.value) return []
+  return summary.value.dailyScores.filter(
+    (d) => d.breakfast || d.lunch || d.dinner
+  )
+})
+
+const mealBarMax = computed(() => {
+  if (!mealDaysWithData.value.length) return 1
+  return Math.max(
+    ...mealDaysWithData.value.map((d) => Math.max(d.breakfast, d.lunch, d.dinner)),
+    1
+  )
+})
+
 function formatDateLabel(dateStr) {
   return dayjs(dateStr).format('M/D')
 }
@@ -126,6 +142,17 @@ onMounted(() => {
           <div class="stat-card">
             <div class="stat-value points-negative">-{{ summary.totalDeduct }}</div>
             <div class="stat-label">{{ timeRangeLabel }}总扣分</div>
+          </div>
+        </div>
+
+        <!-- 三餐金额总览 -->
+        <div class="card meal-hero" v-if="summary.totalMeal > 0">
+          <div class="meal-hero-label">{{ timeRangeLabel }}三餐总花费</div>
+          <div class="meal-hero-value">¥{{ summary.totalMeal.toFixed(2) }}</div>
+          <div class="meal-hero-breakdown">
+            <span>🌅 早餐 ¥{{ summary.totalBreakfast.toFixed(2) }}</span>
+            <span>☀️ 午餐 ¥{{ summary.totalLunch.toFixed(2) }}</span>
+            <span>🌙 晚餐 ¥{{ summary.totalDinner.toFixed(2) }}</span>
           </div>
         </div>
 
@@ -212,6 +239,120 @@ onMounted(() => {
           </div>
         </div>
 
+        <!-- 每日三餐柱状图 -->
+        <div class="card" v-if="mealDaysWithData.length">
+          <div class="card-title">🍱 每日三餐花费</div>
+          <div class="bar-chart">
+            <div
+              v-for="day in mealDaysWithData"
+              :key="day.date"
+              class="bar-group"
+            >
+              <div class="bar-bars">
+                <div
+                  class="bar bar-meal-breakfast"
+                  :style="{ height: (day.breakfast / mealBarMax) * 100 + '%' }"
+                  :title="'早餐: ¥' + day.breakfast"
+                >
+                  <span class="bar-val" v-if="day.breakfast">¥{{ day.breakfast.toFixed(0) }}</span>
+                </div>
+                <div
+                  class="bar bar-meal-lunch"
+                  :style="{ height: (day.lunch / mealBarMax) * 100 + '%' }"
+                  :title="'午餐: ¥' + day.lunch"
+                >
+                  <span class="bar-val" v-if="day.lunch">¥{{ day.lunch.toFixed(0) }}</span>
+                </div>
+                <div
+                  class="bar bar-meal-dinner"
+                  :style="{ height: (day.dinner / mealBarMax) * 100 + '%' }"
+                  :title="'晚餐: ¥' + day.dinner"
+                >
+                  <span class="bar-val" v-if="day.dinner">¥{{ day.dinner.toFixed(0) }}</span>
+                </div>
+              </div>
+              <div class="bar-label">{{ formatDateLabel(day.date) }}</div>
+              <div class="bar-weekday">{{ formatWeekday(day.date) }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 三餐内容统计 -->
+        <div class="card" v-if="summary.breakfastReasons.length">
+          <div class="card-title">
+            <span class="section-icon meal-icon-sm">🌅</span>
+            早餐内容统计
+          </div>
+          <div class="reason-list">
+            <div
+              v-for="item in summary.breakfastReasons"
+              :key="item.reason"
+              class="reason-item"
+            >
+              <div class="reason-info">
+                <span class="reason-text">{{ item.reason }}</span>
+                <span class="reason-count">{{ item.count }}次</span>
+              </div>
+              <div class="reason-bar-bg">
+                <div
+                  class="reason-bar meal"
+                  :style="{ width: (item.count / reasonMaxCount(summary.breakfastReasons)) * 100 + '%' }"
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" v-if="summary.lunchReasons.length">
+          <div class="card-title">
+            <span class="section-icon meal-icon-sm">☀️</span>
+            午餐内容统计
+          </div>
+          <div class="reason-list">
+            <div
+              v-for="item in summary.lunchReasons"
+              :key="item.reason"
+              class="reason-item"
+            >
+              <div class="reason-info">
+                <span class="reason-text">{{ item.reason }}</span>
+                <span class="reason-count">{{ item.count }}次</span>
+              </div>
+              <div class="reason-bar-bg">
+                <div
+                  class="reason-bar meal"
+                  :style="{ width: (item.count / reasonMaxCount(summary.lunchReasons)) * 100 + '%' }"
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" v-if="summary.dinnerReasons.length">
+          <div class="card-title">
+            <span class="section-icon meal-icon-sm">🌙</span>
+            晚餐内容统计
+          </div>
+          <div class="reason-list">
+            <div
+              v-for="item in summary.dinnerReasons"
+              :key="item.reason"
+              class="reason-item"
+            >
+              <div class="reason-info">
+                <span class="reason-text">{{ item.reason }}</span>
+                <span class="reason-count">{{ item.count }}次</span>
+              </div>
+              <div class="reason-bar-bg">
+                <div
+                  class="reason-bar meal"
+                  :style="{ width: (item.count / reasonMaxCount(summary.dinnerReasons)) * 100 + '%' }"
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 每日明细 -->
         <div class="card" v-if="summary.dailyScores.length">
           <div class="card-title">📋 每日明细</div>
@@ -228,6 +369,7 @@ onMounted(() => {
               <div class="detail-scores">
                 <span class="points-positive" v-if="day.add">+{{ day.add }}</span>
                 <span class="points-negative" v-if="day.deduct">-{{ day.deduct }}</span>
+                <span class="meal-color-sm" v-if="day.mealTotal">¥{{ day.mealTotal.toFixed(1) }}</span>
               </div>
               <div
                 class="detail-net"
@@ -403,6 +545,48 @@ onMounted(() => {
 
 .reason-bar.add { background: linear-gradient(90deg, #34c759, #5ddf7f); }
 .reason-bar.deduct { background: linear-gradient(90deg, #f54a45, #ff7875); }
+.reason-bar.meal { background: linear-gradient(90deg, #ffb13b, #ffd28a); }
+
+/* 三餐英雄卡 */
+.meal-hero {
+  background: linear-gradient(135deg, #ffb13b 0%, #ff9f0a 100%);
+  color: white;
+  text-align: center;
+}
+.meal-hero-label {
+  font-size: 13px;
+  opacity: 0.85;
+  margin-bottom: 6px;
+}
+.meal-hero-value {
+  font-size: 36px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+.meal-hero-breakdown {
+  display: flex;
+  justify-content: space-around;
+  font-size: 12px;
+  opacity: 0.95;
+}
+
+/* 三餐柱状图 */
+.bar-meal-breakfast { background: #ffd28a; }
+.bar-meal-lunch { background: #ffb13b; }
+.bar-meal-dinner { background: #ff8a00; }
+.bar-meal-breakfast .bar-val,
+.bar-meal-lunch .bar-val,
+.bar-meal-dinner .bar-val { color: #c47700; }
+
+/* 三餐小图标 */
+.section-icon.meal-icon-sm {
+  background: #ff9f0a;
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+}
+
+.meal-color-sm { color: #ff9f0a; font-weight: 600; }
 
 /* 每日明细 */
 .detail-list {
