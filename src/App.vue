@@ -4,7 +4,8 @@ import { useRoute } from 'vue-router'
 const route = useRoute()
 
 const tabs = [
-  { path: '/', icon: '📝', label: '今日记录' },
+  { path: '/', icon: '📝', label: '记录' },
+  { path: '/history', icon: '📅', label: '历史' },
   { path: '/stats', icon: '📊', label: '统计' },
 ]
 </script>

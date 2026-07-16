@@ -1,5 +1,6 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   getDayRecord,
   saveDayRecord,
@@ -14,10 +15,22 @@ import 'dayjs/locale/zh-cn.js'
 
 dayjs.locale('zh-cn')
 
-const today = dayjs().format('YYYY年M月D日 dddd')
-const dateKey = todayKey()
+const route = useRoute()
+const router = useRouter()
 
-const form = ref(emptyRecord(dateKey))
+// 响应式的当前日期 key (YYYY-MM-DD)
+const currentDateKey = computed(() => {
+  return route.query.date || todayKey()
+})
+
+const isToday = computed(() => currentDateKey.value === todayKey())
+
+// 显示的日期文本
+const displayDateText = computed(() => {
+  return dayjs(currentDateKey.value).format('YYYY年M月D日 dddd')
+})
+
+const form = ref(emptyRecord(currentDateKey.value))
 
 const showToast = ref(false)
 const toastMessage = ref('')
@@ -108,14 +121,37 @@ async function loadWeekSummary() {
   weekSummary.value = summarizeRecords(weekRecords)
 }
 
-onMounted(async () => {
+// 回到今天
+function backToToday() {
+  router.replace({ path: '/' })
+}
+
+// 封装一个加载数据的方法，方便切换日期时调用
+async function loadDataForDate(dateKey) {
+  form.value = emptyRecord(dateKey)
+  hasExisting.value = false
+  
   try {
     const existing = await getDayRecord(dateKey)
     form.value = { ...existing }
     if (hasAnyContent(existing)) hasExisting.value = true
-    await loadWeekSummary()
   } catch (err) {
     console.error('加载数据失败:', err)
+  }
+}
+
+// 监听路由参数变化（为了处理同页面内日期切换的情况）
+watch(() => route.query.date, (newDate) => {
+  const targetDate = newDate || todayKey()
+  loadDataForDate(targetDate)
+})
+
+onMounted(async () => {
+  await loadDataForDate(currentDateKey.value)
+  try {
+    await loadWeekSummary()
+  } catch (err) {
+    console.error('加载本周统计失败:', err)
   }
   loadReasonTags()
 })
@@ -123,12 +159,20 @@ onMounted(async () => {
 
 <template>
   <div class="page">
+    <!-- 如果不是今天，显示一个醒目的补登提示横幅 -->
+    <div v-if="!isToday" class="backfill-banner">
+      <div class="banner-text">
+        <span class="banner-icon">⚠️</span> 当前正在补登/修改历史记录
+      </div>
+      <button class="banner-btn" @click="backToToday">回到今天</button>
+    </div>
+
     <!-- 顶部大标题 -->
     <div class="page-header">
       <div class="header-row">
         <div>
-          <h1>今日记录</h1>
-          <p>{{ today }}</p>
+          <h1>{{ isToday ? '今日记录' : '历史记录' }}</h1>
+          <p>{{ displayDateText }}</p>
         </div>
         <div v-if="hasExisting" class="recorded-badge">
           <span class="dot"></span>已记录
@@ -372,11 +416,11 @@ onMounted(async () => {
         :disabled="saving"
         @click="handleSave"
       >
-        {{ saving ? '保存中…' : (hasExisting ? '更新今日记录' : '保存今日记录') }}
+        {{ saving ? '保存中…' : (hasExisting ? '更新该日记录' : '保存该日记录') }}
       </button>
 
       <p v-if="hasExisting" class="save-hint">
-        今天已有记录，再次保存将覆盖之前的内容
+        该日已有记录，再次保存将覆盖之前的内容
       </p>
     </div>
 
@@ -392,6 +436,39 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.backfill-banner {
+  background: var(--color-warning-light);
+  color: #B26A00;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: -20px -20px 20px -20px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.banner-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.banner-btn {
+  background: white;
+  color: #B26A00;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+.banner-btn:active {
+  opacity: 0.8;
 }
 
 .recorded-badge {

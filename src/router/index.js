@@ -8,6 +8,12 @@ const routes = [
     meta: { title: '今日记录' },
   },
   {
+    path: '/history',
+    name: 'History',
+    component: () => import('../views/History.vue'),
+    meta: { title: '历史记录' },
+  },
+  {
     path: '/stats',
     name: 'Stats',
     component: () => import('../views/Stats.vue'),
