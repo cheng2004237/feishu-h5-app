@@ -271,16 +271,19 @@ onMounted(async () => {
           <input
             v-model="form.breakfastContent"
             class="form-input sub-input"
-            placeholder="早餐吃了什么"
+            placeholder="早餐吃了什么（多个用顿号分隔）"
           />
-          <div v-if="breakfastTags.length" class="quick-tags" style="margin-top: 8px;">
-            <span
-              v-for="tag in breakfastTags"
-              :key="tag"
-              class="quick-tag meal"
-              :class="{ selected: isSelected('breakfastContent', tag) }"
-              @click="toggleReason('breakfastContent', tag)"
-            >{{ tag }}</span>
+          <div v-if="breakfastTags.length" class="history-section">
+            <span class="history-label">最近用过</span>
+            <div class="quick-tags">
+              <span
+                v-for="tag in breakfastTags"
+                :key="tag"
+                class="quick-tag meal"
+                :class="{ selected: isSelected('breakfastContent', tag) }"
+                @click="toggleReason('breakfastContent', tag)"
+              >{{ tag }}</span>
+            </div>
           </div>
         </div>
 
@@ -307,16 +310,19 @@ onMounted(async () => {
           <input
             v-model="form.lunchContent"
             class="form-input sub-input"
-            placeholder="午餐吃了什么"
+            placeholder="午餐吃了什么（多个用顿号分隔）"
           />
-          <div v-if="lunchTags.length" class="quick-tags" style="margin-top: 8px;">
-            <span
-              v-for="tag in lunchTags"
-              :key="tag"
-              class="quick-tag meal"
-              :class="{ selected: isSelected('lunchContent', tag) }"
-              @click="toggleReason('lunchContent', tag)"
-            >{{ tag }}</span>
+          <div v-if="lunchTags.length" class="history-section">
+            <span class="history-label">最近用过</span>
+            <div class="quick-tags">
+              <span
+                v-for="tag in lunchTags"
+                :key="tag"
+                class="quick-tag meal"
+                :class="{ selected: isSelected('lunchContent', tag) }"
+                @click="toggleReason('lunchContent', tag)"
+              >{{ tag }}</span>
+            </div>
           </div>
         </div>
 
@@ -343,16 +349,19 @@ onMounted(async () => {
           <input
             v-model="form.dinnerContent"
             class="form-input sub-input"
-            placeholder="晚餐吃了什么"
+            placeholder="晚餐吃了什么（多个用顿号分隔）"
           />
-          <div v-if="dinnerTags.length" class="quick-tags" style="margin-top: 8px;">
-            <span
-              v-for="tag in dinnerTags"
-              :key="tag"
-              class="quick-tag meal"
-              :class="{ selected: isSelected('dinnerContent', tag) }"
-              @click="toggleReason('dinnerContent', tag)"
-            >{{ tag }}</span>
+          <div v-if="dinnerTags.length" class="history-section">
+            <span class="history-label">最近用过</span>
+            <div class="quick-tags">
+              <span
+                v-for="tag in dinnerTags"
+                :key="tag"
+                class="quick-tag meal"
+                :class="{ selected: isSelected('dinnerContent', tag) }"
+                @click="toggleReason('dinnerContent', tag)"
+              >{{ tag }}</span>
+            </div>
           </div>
         </div>
       </div>
