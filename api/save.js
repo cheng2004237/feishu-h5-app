@@ -43,6 +43,8 @@ export default async function handler(req, res) {
       '午餐内容': req.body.lunchContent || '',
       '晚餐金额': Number(req.body.dinnerAmount) || 0,
       '晚餐内容': req.body.dinnerContent || '',
+      '跑步用时': Number(req.body.runTime) || 0,
+      '跑步距离': Number(req.body.runDistance) || 0,
     }
 
     let result

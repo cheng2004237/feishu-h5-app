@@ -63,6 +63,8 @@ export default async function handler(req, res) {
           lunchContent: extractText(f['午餐内容']),
           dinnerAmount: Number(f['晚餐金额']) || 0,
           dinnerContent: extractText(f['晚餐内容']),
+          runTime: Number(f['跑步用时']) || 0,
+          runDistance: Number(f['跑步距离']) || 0,
         }
       })
       .filter((r) => r.date >= start && r.date <= end)

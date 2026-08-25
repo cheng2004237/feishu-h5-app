@@ -54,6 +54,8 @@ export function emptyRecord(dateKey) {
     lunchContent: '',
     dinnerAmount: 0,
     dinnerContent: '',
+    runTime: 0,
+    runDistance: 0,
   }
 }
 
@@ -166,6 +168,8 @@ export function summarizeRecords(records) {
   let totalBreakfast = 0
   let totalLunch = 0
   let totalDinner = 0
+  let totalRunTime = 0
+  let totalRunDistance = 0
 
   const addReasonMap = {}
   const deductReasonMap = {}
@@ -180,6 +184,8 @@ export function summarizeRecords(records) {
     const breakfast = Number(r.breakfastAmount) || 0
     const lunch = Number(r.lunchAmount) || 0
     const dinner = Number(r.dinnerAmount) || 0
+    const runTime = Number(r.runTime) || 0
+    const runDistance = Number(r.runDistance) || 0
 
     totalAdd += add
     totalDeduct += deduct
@@ -187,6 +193,8 @@ export function summarizeRecords(records) {
     totalLunch += lunch
     totalDinner += dinner
     totalMeal += breakfast + lunch + dinner
+    totalRunTime += runTime
+    totalRunDistance += runDistance
 
     dailyScores.push({
       date: r.date,
@@ -197,6 +205,8 @@ export function summarizeRecords(records) {
       lunch,
       dinner,
       mealTotal: breakfast + lunch + dinner,
+      runTime,
+      runDistance,
     })
 
     accumulateReasons(r.addReason, addReasonMap)
@@ -206,6 +216,8 @@ export function summarizeRecords(records) {
     accumulateReasons(r.dinnerContent, dinnerReasonMap)
   })
 
+  const runSpeed = totalRunTime > 0 ? totalRunDistance / totalRunTime : 0
+
   return {
     totalAdd,
     totalDeduct,
@@ -214,6 +226,9 @@ export function summarizeRecords(records) {
     totalBreakfast,
     totalLunch,
     totalDinner,
+    totalRunTime,
+    totalRunDistance,
+    runSpeed,
     addReasons: toSortedList(addReasonMap),
     deductReasons: toSortedList(deductReasonMap),
     breakfastReasons: toSortedList(breakfastReasonMap),
@@ -236,4 +251,16 @@ function toSortedList(map) {
   return Object.entries(map)
     .map(([reason, count]) => ({ reason, count }))
     .sort((a, b) => b.count - a.count)
+}
+
+/**
+ * 把秒数格式化成「X分X秒」
+ * 0 → "0秒"，65 → "1分5秒"，3600 → "60分0秒"
+ */
+export function formatRunTime(seconds) {
+  const s = Math.max(0, Math.floor(Number(seconds) || 0))
+  if (s < 60) return `${s}秒`
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return `${m}分${r}秒`
 }

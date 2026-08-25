@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getRecordsInRange, todayKey } from '../utils/storage.js'
+import { getRecordsInRange, todayKey, formatRunTime } from '../utils/storage.js'
 import dayjs from 'dayjs'
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore.js'
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter.js'
@@ -187,6 +187,10 @@ onMounted(() => {
                 }}</span>
                 <span class="stat-label">三餐</span>
               </div>
+              <div v-if="selectedRecord.runDistance" class="detail-stat">
+                <span class="stat-value run">{{ selectedRecord.runDistance }}米</span>
+                <span class="stat-label">跑步</span>
+              </div>
             </div>
             
             <div class="detail-divider"></div>
@@ -226,6 +230,19 @@ onMounted(() => {
                   <span class="item-dot meal"></span>晚餐 (¥{{ selectedRecord.dinnerAmount || 0 }})
                 </div>
                 <div class="item-body">{{ selectedRecord.dinnerContent || '无内容' }}</div>
+              </div>
+              
+              <div v-if="selectedRecord.runTime > 0 || selectedRecord.runDistance > 0" class="detail-item">
+                <div class="item-head">
+                  <span class="item-dot run"></span>跑步
+                </div>
+                <div class="item-body">
+                  用时 {{ formatRunTime(selectedRecord.runTime) }} ·
+                  距离 {{ selectedRecord.runDistance || 0 }} 米
+                  <span v-if="selectedRecord.runTime > 0 && selectedRecord.runDistance > 0">
+                    · 速度 {{ (selectedRecord.runDistance / selectedRecord.runTime).toFixed(2) }} 米/秒
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -419,6 +436,7 @@ onMounted(() => {
 .stat-value.positive { color: var(--color-success); }
 .stat-value.negative { color: var(--color-danger); }
 .stat-value.meal { color: var(--color-warning); }
+.stat-value.run { color: #0A7E3B; }
 
 .stat-label {
   font-size: 12px;
@@ -457,6 +475,7 @@ onMounted(() => {
 .item-dot.add { background: var(--color-success); }
 .item-dot.deduct { background: var(--color-danger); }
 .item-dot.meal { background: var(--color-warning); }
+.item-dot.run { background: #34C759; }
 
 .item-body {
   font-size: 14px;

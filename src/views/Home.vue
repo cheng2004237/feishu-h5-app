@@ -9,6 +9,7 @@ import {
   summarizeRecords,
   getReasonHistory,
   emptyRecord,
+  formatRunTime,
 } from '../utils/storage.js'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn.js'
@@ -31,6 +32,10 @@ const displayDateText = computed(() => {
 })
 
 const form = ref(emptyRecord(currentDateKey.value))
+
+// 跑步输入的临时状态：分和秒
+const runMinutes = ref('')
+const runSeconds = ref('')
 
 const showToast = ref(false)
 const toastMessage = ref('')
@@ -85,6 +90,7 @@ function hasAnyContent(record) {
   return (
     Number(record.addPoints) || Number(record.deductPoints)
     || Number(record.breakfastAmount) || Number(record.lunchAmount) || Number(record.dinnerAmount)
+    || Number(record.runTime) || Number(record.runDistance)
     || (record.addReason && record.addReason.trim())
     || (record.deductReason && record.deductReason.trim())
     || (record.breakfastContent && record.breakfastContent.trim())
@@ -93,10 +99,23 @@ function hasAnyContent(record) {
   )
 }
 
+function syncRunFormFromTotal() {
+  const total = Math.max(0, Math.floor(Number(form.value.runTime) || 0))
+  runMinutes.value = total ? String(Math.floor(total / 60)) : ''
+  runSeconds.value = total ? String(total % 60) : ''
+}
+
+function writeBackRunTime() {
+  const m = Math.max(0, Math.floor(Number(runMinutes.value) || 0))
+  const s = Math.max(0, Math.floor(Number(runSeconds.value) || 0))
+  form.value.runTime = m * 60 + s
+}
+
 async function handleSave() {
   if (saving.value) return
   saving.value = true
   try {
+    writeBackRunTime()
     await saveDayRecord(form.value)
     hasExisting.value = true
     showMessage('保存成功')
@@ -130,10 +149,12 @@ function backToToday() {
 async function loadDataForDate(dateKey) {
   form.value = emptyRecord(dateKey)
   hasExisting.value = false
+  syncRunFormFromTotal()
   
   try {
     const existing = await getDayRecord(dateKey)
     form.value = { ...existing }
+    syncRunFormFromTotal()
     if (hasAnyContent(existing)) hasExisting.value = true
   } catch (err) {
     console.error('加载数据失败:', err)
@@ -410,6 +431,61 @@ onMounted(async () => {
         </div>
       </div>
 
+      <!-- 跑步 -->
+      <div class="section-header">跑步</div>
+      <div class="card no-padding">
+        <!-- 用时（X分X秒）-->
+        <div class="item-row">
+          <div class="item-icon icon-run">🏃</div>
+          <span class="item-name">用时</span>
+          <div class="run-time-row">
+            <input
+              v-model="runMinutes"
+              class="step-input run-input"
+              type="number"
+              min="0"
+              placeholder="0"
+              @input="writeBackRunTime"
+            />
+            <span class="run-sep">分</span>
+            <input
+              v-model="runSeconds"
+              class="step-input run-input"
+              type="number"
+              min="0"
+              max="59"
+              placeholder="0"
+              @input="writeBackRunTime"
+            />
+            <span class="run-sep">秒</span>
+          </div>
+        </div>
+        <div class="row-divider"></div>
+        <!-- 距离（米）-->
+        <div class="item-row">
+          <div class="item-icon icon-run">📏</div>
+          <span class="item-name">距离</span>
+          <div class="stepper">
+            <button class="step-btn run" @click="bump('runDistance', -100)">−</button>
+            <input
+              v-model.number="form.runDistance"
+              class="step-input"
+              type="number"
+              min="0"
+              step="1"
+              placeholder="0"
+            />
+            <button class="step-btn run" @click="bump('runDistance', 100)">+</button>
+          </div>
+          <span class="step-unit">米</span>
+        </div>
+        <div v-if="form.runTime > 0 && form.runDistance > 0" class="run-summary">
+          <span class="run-summary-icon">⚡</span>
+          平均配速 {{ (form.runTime / form.runDistance).toFixed(2) }} 秒/米 ·
+          平均速度 {{ (form.runDistance / form.runTime).toFixed(2) }} 米/秒
+        </div>
+      </div>
+
       <!-- 保存按钮 -->
       <button
         class="btn btn-lg btn-primary save-btn"
@@ -655,6 +731,51 @@ onMounted(async () => {
   color: #C27400;
 }
 
+.step-btn.run {
+  background: #E5F5EC;
+  color: #0A7E3B;
+}
+
+.icon-run {
+  background: linear-gradient(135deg, #34C759, #0A7E3B);
+  font-size: 16px;
+}
+
+.run-time-row {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.run-input {
+  width: 56px;
+}
+
+.run-sep {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  margin: 0 2px;
+}
+
+.run-summary {
+  background: linear-gradient(135deg, #E5F5EC, #F0FFF5);
+  padding: 12px 16px;
+  font-size: 12px;
+  color: #0A7E3B;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid rgba(60, 60, 67, 0.05);
+}
+
+.run-summary-icon {
+  font-size: 14px;
+}
+
 /* 统一输入框 - 所有加减号中间的输入都用此样式 */
 .step-input {
   width: 70px;
@@ -692,6 +813,11 @@ onMounted(async () => {
 .item-row:has(.step-btn.meal) .step-input:focus {
   background: var(--color-warning-light);
   color: #C27400;
+}
+
+.item-row:has(.step-btn.run) .step-input:focus {
+  background: #E5F5EC;
+  color: #0A7E3B;
 }
 
 /* 统一单位文字 */

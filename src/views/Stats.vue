@@ -4,6 +4,7 @@ import {
   getThisWeekRecords,
   getThisMonthRecords,
   summarizeRecords,
+  formatRunTime,
 } from '../utils/storage.js'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn.js'
@@ -69,6 +70,16 @@ const mealBarMax = computed(() => {
     ...mealDaysWithData.value.map((d) => Math.max(d.breakfast, d.lunch, d.dinner)),
     1
   )
+})
+
+const runDaysWithData = computed(() => {
+  if (!summary.value) return []
+  return summary.value.dailyScores.filter((d) => d.runDistance > 0)
+})
+
+const runBarMax = computed(() => {
+  if (!runDaysWithData.value.length) return 1
+  return Math.max(...runDaysWithData.value.map((d) => d.runDistance), 1)
 })
 
 function formatDateLabel(dateStr) {
@@ -164,6 +175,28 @@ onMounted(() => {
               <span class="meal-hero-emoji">🌙</span>
               <span class="meal-hero-name">晚餐</span>
               <span class="meal-hero-num">¥{{ summary.totalDinner.toFixed(2) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 跑步统计总览 -->
+        <div v-if="summary.totalRunTime > 0 || summary.totalRunDistance > 0" class="run-hero">
+          <div class="run-hero-label">{{ timeRangeLabel }}跑步数据</div>
+          <div class="run-hero-grid">
+            <div class="run-hero-stat">
+              <div class="run-hero-emoji">⏱️</div>
+              <div class="run-hero-num">{{ formatRunTime(summary.totalRunTime) }}</div>
+              <div class="run-hero-name">总用时</div>
+            </div>
+            <div class="run-hero-stat">
+              <div class="run-hero-emoji">📏</div>
+              <div class="run-hero-num">{{ summary.totalRunDistance }}</div>
+              <div class="run-hero-name">总距离(米)</div>
+            </div>
+            <div class="run-hero-stat">
+              <div class="run-hero-emoji">⚡</div>
+              <div class="run-hero-num">{{ summary.runSpeed.toFixed(2) }}</div>
+              <div class="run-hero-name">平均速度(米/秒)</div>
             </div>
           </div>
         </div>
@@ -289,6 +322,30 @@ onMounted(() => {
           </div>
         </div>
 
+        <!-- 每日跑步距离柱状图 -->
+        <div v-if="runDaysWithData.length" class="card">
+          <div class="card-title">🏃 每日跑步距离</div>
+          <div class="bar-chart">
+            <div
+              v-for="day in runDaysWithData"
+              :key="day.date"
+              class="bar-group"
+            >
+              <div class="bar-bars">
+                <div
+                  class="bar bar-run"
+                  :style="{ height: (day.runDistance / runBarMax) * 100 + '%' }"
+                  :title="'距离: ' + day.runDistance + ' 米'"
+                >
+                  <span class="bar-val" v-if="day.runDistance">{{ day.runDistance }}米</span>
+                </div>
+              </div>
+              <div class="bar-label">{{ formatDateLabel(day.date) }}</div>
+              <div class="bar-weekday">{{ formatWeekday(day.date) }}</div>
+            </div>
+          </div>
+        </div>
+
         <!-- 三餐内容统计 -->
         <div v-if="summary.breakfastReasons.length" class="card">
           <div class="card-title">
@@ -382,6 +439,7 @@ onMounted(() => {
                 <span class="points-positive" v-if="day.add">+{{ day.add }}</span>
                 <span class="points-negative" v-if="day.deduct">-{{ day.deduct }}</span>
                 <span class="meal-color-sm" v-if="day.mealTotal">¥{{ day.mealTotal.toFixed(1) }}</span>
+                <span class="run-color-sm" v-if="day.runDistance">{{ day.runDistance }}米</span>
               </div>
               <div
                 class="detail-net"
@@ -701,5 +759,68 @@ onMounted(() => {
 
 .meal-color-sm {
   color: var(--color-warning);
+}
+
+.run-color-sm {
+  color: #0A7E3B;
+}
+
+/* 跑步英雄卡 */
+.run-hero {
+  background: var(--color-bg-white);
+  border-radius: var(--radius-lg);
+  padding: 18px 16px 14px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+  border-left: 4px solid #34C759;
+}
+
+.run-hero-label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 12px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.run-hero-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.run-hero-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.run-hero-emoji {
+  font-size: 18px;
+  margin-bottom: 2px;
+}
+
+.run-hero-num {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0A7E3B;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+}
+
+.run-hero-name {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+/* 跑步柱状图 */
+.bar-run {
+  background: linear-gradient(180deg, #5DDF7F, #34C759);
+}
+
+.bar-run .bar-val {
+  color: #0A7E3B;
 }
 </style>
