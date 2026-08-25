@@ -82,6 +82,16 @@ const runBarMax = computed(() => {
   return Math.max(...runDaysWithData.value.map((d) => d.runDistance), 1)
 })
 
+const otherExpenseDaysWithData = computed(() => {
+  if (!summary.value) return []
+  return summary.value.dailyScores.filter((d) => d.otherExpense > 0)
+})
+
+const otherExpenseBarMax = computed(() => {
+  if (!otherExpenseDaysWithData.value.length) return 1
+  return Math.max(...otherExpenseDaysWithData.value.map((d) => d.otherExpense), 1)
+})
+
 function formatDateLabel(dateStr) {
   return dayjs(dateStr).format('M/D')
 }
@@ -199,6 +209,12 @@ onMounted(() => {
               <div class="run-hero-name">平均速度(米/秒)</div>
             </div>
           </div>
+        </div>
+
+        <!-- 其他消费总览 -->
+        <div v-if="summary.totalOtherExpense > 0" class="other-hero">
+          <div class="other-hero-label">{{ timeRangeLabel }}其他消费</div>
+          <div class="other-hero-value">¥{{ summary.totalOtherExpense.toFixed(2) }}</div>
         </div>
 
         <!-- 每日得分柱状图 -->
@@ -346,6 +362,30 @@ onMounted(() => {
           </div>
         </div>
 
+        <!-- 每日其他消费柱状图 -->
+        <div v-if="otherExpenseDaysWithData.length" class="card">
+          <div class="card-title">🛍️ 每日其他消费</div>
+          <div class="bar-chart">
+            <div
+              v-for="day in otherExpenseDaysWithData"
+              :key="day.date"
+              class="bar-group"
+            >
+              <div class="bar-bars">
+                <div
+                  class="bar bar-other"
+                  :style="{ height: (day.otherExpense / otherExpenseBarMax) * 100 + '%' }"
+                  :title="'金额: ¥' + day.otherExpense"
+                >
+                  <span class="bar-val" v-if="day.otherExpense">¥{{ day.otherExpense.toFixed(0) }}</span>
+                </div>
+              </div>
+              <div class="bar-label">{{ formatDateLabel(day.date) }}</div>
+              <div class="bar-weekday">{{ formatWeekday(day.date) }}</div>
+            </div>
+          </div>
+        </div>
+
         <!-- 三餐内容统计 -->
         <div v-if="summary.breakfastReasons.length" class="card">
           <div class="card-title">
@@ -422,6 +462,32 @@ onMounted(() => {
           </div>
         </div>
 
+        <!-- 其他消费原因统计 -->
+        <div v-if="summary.otherExpenseReasons.length" class="card">
+          <div class="card-title">
+            <span class="reason-badge other">🛍️</span>
+            其他消费原因
+          </div>
+          <div class="reason-list">
+            <div
+              v-for="item in summary.otherExpenseReasons"
+              :key="item.reason"
+              class="reason-item"
+            >
+              <div class="reason-info">
+                <span class="reason-text">{{ item.reason }}</span>
+                <span class="reason-count">{{ item.count }}次</span>
+              </div>
+              <div class="reason-bar-bg">
+                <div
+                  class="reason-bar other"
+                  :style="{ width: (item.count / reasonMaxCount(summary.otherExpenseReasons)) * 100 + '%' }"
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 每日明细 -->
         <div v-if="summary.dailyScores.length" class="card">
           <div class="card-title">📋 每日明细</div>
@@ -439,6 +505,7 @@ onMounted(() => {
                 <span class="points-positive" v-if="day.add">+{{ day.add }}</span>
                 <span class="points-negative" v-if="day.deduct">-{{ day.deduct }}</span>
                 <span class="meal-color-sm" v-if="day.mealTotal">¥{{ day.mealTotal.toFixed(1) }}</span>
+                <span class="other-color-sm" v-if="day.otherExpense">¥{{ day.otherExpense.toFixed(1) }}</span>
                 <span class="run-color-sm" v-if="day.runDistance">{{ day.runDistance }}米</span>
               </div>
               <div
@@ -765,6 +832,36 @@ onMounted(() => {
   color: #0A7E3B;
 }
 
+.other-color-sm {
+  color: #7C3AED;
+}
+
+/* 其他消费英雄卡 */
+.other-hero {
+  background: var(--color-bg-white);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px 14px;
+  margin-bottom: 12px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+  border-left: 4px solid #7C3AED;
+}
+
+.other-hero-label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.other-hero-value {
+  font-size: 40px;
+  font-weight: 700;
+  color: #7C3AED;
+  letter-spacing: -1px;
+  line-height: 1.1;
+}
+
 /* 跑步英雄卡 */
 .run-hero {
   background: var(--color-bg-white);
@@ -822,5 +919,23 @@ onMounted(() => {
 
 .bar-run .bar-val {
   color: #0A7E3B;
+}
+
+/* 其他消费柱状图 */
+.bar-other {
+  background: linear-gradient(180deg, #C084FC, #7C3AED);
+}
+
+.bar-other .bar-val {
+  color: #6B21A8;
+}
+
+.reason-badge.other {
+  background: #7C3AED;
+  font-size: 11px;
+}
+
+.reason-bar.other {
+  background: linear-gradient(90deg, #7C3AED, #C084FC);
 }
 </style>

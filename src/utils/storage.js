@@ -54,6 +54,8 @@ export function emptyRecord(dateKey) {
     lunchContent: '',
     dinnerAmount: 0,
     dinnerContent: '',
+    otherExpense: 0,
+    otherExpenseReason: '',
     runTime: 0,
     runDistance: 0,
   }
@@ -82,6 +84,9 @@ export async function saveDayRecord(record) {
   collectReasons('breakfast', record.breakfastContent)
   collectReasons('lunch', record.lunchContent)
   collectReasons('dinner', record.dinnerContent)
+
+  // 其他消费原因存入历史候选
+  collectReasons('otherExpense', record.otherExpenseReason)
 
   return data
 }
@@ -149,7 +154,7 @@ function collectReasons(type, text) {
 
 /**
  * 获取指定类型的历史候选列表
- * @param {'add'|'deduct'|'breakfast'|'lunch'|'dinner'} type
+ * @param {'add'|'deduct'|'breakfast'|'lunch'|'dinner'|'otherExpense'} type
  */
 export function getReasonHistory(type) {
   const history = loadReasonHistory()
@@ -170,12 +175,14 @@ export function summarizeRecords(records) {
   let totalDinner = 0
   let totalRunTime = 0
   let totalRunDistance = 0
+  let totalOtherExpense = 0
 
   const addReasonMap = {}
   const deductReasonMap = {}
   const breakfastReasonMap = {}
   const lunchReasonMap = {}
   const dinnerReasonMap = {}
+  const otherExpenseReasonMap = {}
   const dailyScores = []
 
   records.forEach((r) => {
@@ -186,6 +193,7 @@ export function summarizeRecords(records) {
     const dinner = Number(r.dinnerAmount) || 0
     const runTime = Number(r.runTime) || 0
     const runDistance = Number(r.runDistance) || 0
+    const otherExpense = Number(r.otherExpense) || 0
 
     totalAdd += add
     totalDeduct += deduct
@@ -195,6 +203,7 @@ export function summarizeRecords(records) {
     totalMeal += breakfast + lunch + dinner
     totalRunTime += runTime
     totalRunDistance += runDistance
+    totalOtherExpense += otherExpense
 
     dailyScores.push({
       date: r.date,
@@ -207,6 +216,7 @@ export function summarizeRecords(records) {
       mealTotal: breakfast + lunch + dinner,
       runTime,
       runDistance,
+      otherExpense,
     })
 
     accumulateReasons(r.addReason, addReasonMap)
@@ -214,6 +224,7 @@ export function summarizeRecords(records) {
     accumulateReasons(r.breakfastContent, breakfastReasonMap)
     accumulateReasons(r.lunchContent, lunchReasonMap)
     accumulateReasons(r.dinnerContent, dinnerReasonMap)
+    accumulateReasons(r.otherExpenseReason, otherExpenseReasonMap)
   })
 
   const runSpeed = totalRunTime > 0 ? totalRunDistance / totalRunTime : 0
@@ -229,11 +240,13 @@ export function summarizeRecords(records) {
     totalRunTime,
     totalRunDistance,
     runSpeed,
+    totalOtherExpense,
     addReasons: toSortedList(addReasonMap),
     deductReasons: toSortedList(deductReasonMap),
     breakfastReasons: toSortedList(breakfastReasonMap),
     lunchReasons: toSortedList(lunchReasonMap),
     dinnerReasons: toSortedList(dinnerReasonMap),
+    otherExpenseReasons: toSortedList(otherExpenseReasonMap),
     dailyScores,
     dayCount: records.length,
   }

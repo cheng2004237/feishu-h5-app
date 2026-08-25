@@ -54,6 +54,7 @@ const deductReasonTags = ref([])
 const breakfastTags = ref([])
 const lunchTags = ref([])
 const dinnerTags = ref([])
+const otherExpenseTags = ref([])
 
 function loadReasonTags() {
   addReasonTags.value = getReasonHistory('add')
@@ -61,6 +62,7 @@ function loadReasonTags() {
   breakfastTags.value = getReasonHistory('breakfast')
   lunchTags.value = getReasonHistory('lunch')
   dinnerTags.value = getReasonHistory('dinner')
+  otherExpenseTags.value = getReasonHistory('otherExpense')
 }
 
 function bump(field, delta) {
@@ -90,12 +92,13 @@ function hasAnyContent(record) {
   return (
     Number(record.addPoints) || Number(record.deductPoints)
     || Number(record.breakfastAmount) || Number(record.lunchAmount) || Number(record.dinnerAmount)
-    || Number(record.runTime) || Number(record.runDistance)
+    || Number(record.otherExpense) || Number(record.runTime) || Number(record.runDistance)
     || (record.addReason && record.addReason.trim())
     || (record.deductReason && record.deductReason.trim())
     || (record.breakfastContent && record.breakfastContent.trim())
     || (record.lunchContent && record.lunchContent.trim())
     || (record.dinnerContent && record.dinnerContent.trim())
+    || (record.otherExpenseReason && record.otherExpenseReason.trim())
   )
 }
 
@@ -431,6 +434,48 @@ onMounted(async () => {
         </div>
       </div>
 
+      <!-- 其他消费 -->
+      <div class="section-header">其他消费</div>
+      <div class="card no-padding">
+        <div class="item-row">
+          <div class="item-icon icon-other">🛍️</div>
+          <span class="item-name">金额</span>
+          <div class="stepper">
+            <button class="step-btn other" @click="bump('otherExpense', -1)">−</button>
+            <input
+              v-model.number="form.otherExpense"
+              class="step-input"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0"
+            />
+            <button class="step-btn other" @click="bump('otherExpense', 1)">+</button>
+          </div>
+          <span class="step-unit">元</span>
+        </div>
+        <div class="row-divider"></div>
+        <div class="sub-row">
+          <input
+            v-model="form.otherExpenseReason"
+            class="form-input sub-input"
+            placeholder="消费原因（多个用顿号分隔）"
+          />
+          <div v-if="otherExpenseTags.length" class="history-section">
+            <span class="history-label">最近用过</span>
+            <div class="quick-tags">
+              <span
+                v-for="tag in otherExpenseTags"
+                :key="tag"
+                class="quick-tag other"
+                :class="{ selected: isSelected('otherExpenseReason', tag) }"
+                @click="toggleReason('otherExpenseReason', tag)"
+              >{{ tag }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 跑步 -->
       <div class="section-header">跑步</div>
       <div class="card no-padding">
@@ -736,9 +781,29 @@ onMounted(async () => {
   color: #0A7E3B;
 }
 
+.step-btn.other {
+  background: #F3E8FF;
+  color: #6B21A8;
+}
+
 .icon-run {
   background: linear-gradient(135deg, #34C759, #0A7E3B);
   font-size: 16px;
+}
+
+.icon-other {
+  background: linear-gradient(135deg, #C084FC, #7C3AED);
+  font-size: 16px;
+}
+
+.quick-tag.other {
+  background: #F3E8FF;
+  color: #6B21A8;
+}
+
+.quick-tag.other.selected {
+  background: #7C3AED;
+  color: white;
 }
 
 .run-time-row {
@@ -818,6 +883,11 @@ onMounted(async () => {
 .item-row:has(.step-btn.run) .step-input:focus {
   background: #E5F5EC;
   color: #0A7E3B;
+}
+
+.item-row:has(.step-btn.other) .step-input:focus {
+  background: #F3E8FF;
+  color: #6B21A8;
 }
 
 /* 统一单位文字 */

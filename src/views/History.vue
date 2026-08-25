@@ -187,6 +187,10 @@ onMounted(() => {
                 }}</span>
                 <span class="stat-label">三餐</span>
               </div>
+              <div v-if="selectedRecord.otherExpense" class="detail-stat">
+                <span class="stat-value other">¥{{ Number(selectedRecord.otherExpense).toFixed(2) }}</span>
+                <span class="stat-label">其他消费</span>
+              </div>
               <div v-if="selectedRecord.runDistance" class="detail-stat">
                 <span class="stat-value run">{{ selectedRecord.runDistance }}米</span>
                 <span class="stat-label">跑步</span>
@@ -243,6 +247,13 @@ onMounted(() => {
                     · 速度 {{ (selectedRecord.runDistance / selectedRecord.runTime).toFixed(2) }} 米/秒
                   </span>
                 </div>
+              </div>
+              
+              <div v-if="selectedRecord.otherExpense > 0 || selectedRecord.otherExpenseReason" class="detail-item">
+                <div class="item-head">
+                  <span class="item-dot other"></span>其他消费 (¥{{ selectedRecord.otherExpense || 0 }})
+                </div>
+                <div class="item-body">{{ selectedRecord.otherExpenseReason || '无原因' }}</div>
               </div>
             </div>
           </div>
@@ -437,6 +448,7 @@ onMounted(() => {
 .stat-value.negative { color: var(--color-danger); }
 .stat-value.meal { color: var(--color-warning); }
 .stat-value.run { color: #0A7E3B; }
+.stat-value.other { color: #7C3AED; }
 
 .stat-label {
   font-size: 12px;
@@ -476,6 +488,7 @@ onMounted(() => {
 .item-dot.deduct { background: var(--color-danger); }
 .item-dot.meal { background: var(--color-warning); }
 .item-dot.run { background: #34C759; }
+.item-dot.other { background: #7C3AED; }
 
 .item-body {
   font-size: 14px;
