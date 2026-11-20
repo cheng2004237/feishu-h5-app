@@ -89,6 +89,9 @@ export async function getRecordsInRange(startDate, endDate) {
   if (!res.ok) {
     throw new Error(data.error || `请求失败 (${res.status})`)
   }
+  if (data.recentTags && typeof data.recentTags === 'object') {
+    mergeReasonHistory(data.recentTags)
+  }
   return Array.isArray(data.records) ? data.records : []
 }
 
@@ -208,6 +211,38 @@ function collectReasons(type, text) {
 export function getReasonHistory(type) {
   const history = loadReasonHistory()
   return Array.isArray(history[type]) ? history[type] : []
+}
+
+/**
+ * 将飞书多维表格返回的最近历史标签与本地 localStorage 合并去重
+ * 确保换设备、清缓存或首次访问也能直接点选历史常用内容
+ */
+export function mergeReasonHistory(remoteTags) {
+  if (!remoteTags || typeof remoteTags !== 'object') return
+  const history = loadReasonHistory()
+  const types = ['add', 'deduct', 'breakfast', 'lunch', 'dinner', 'otherExpense']
+
+  types.forEach((type) => {
+    const localList = Array.isArray(history[type]) ? history[type] : []
+    const remoteList = Array.isArray(remoteTags[type]) ? remoteTags[type] : []
+    const merged = []
+    const seen = new Set()
+
+    // 以飞书最新历史为基准，同时保留本地刚保存过的项在最前面
+    for (const item of [...localList, ...remoteList]) {
+      const cleaned = String(item || '').trim()
+      if (cleaned && !seen.has(cleaned)) {
+        seen.add(cleaned)
+        merged.push(cleaned)
+        if (merged.length >= 30) break
+      }
+    }
+    if (merged.length > 0) {
+      history[type] = merged
+    }
+  })
+
+  saveReasonHistory(history)
 }
 
 export function getWeeklyGoal() {

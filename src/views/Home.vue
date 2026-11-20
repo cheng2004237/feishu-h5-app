@@ -320,6 +320,7 @@ async function loadDataForDate(dateKey) {
       hasExisting.value = false
     }
     syncRunFormFromTotal()
+    loadReasonTags()
   } catch (err) {
     if (seq !== loadSeq) return
     console.error('加载数据失败:', err)
@@ -629,7 +630,7 @@ onBeforeUnmount(() => {
                 placeholder="加分原因（多个用顿号或逗号分隔）"
               />
               <div v-if="tags.add.length" class="tag-block">
-                <span class="tag-label">最近用过</span>
+                <span class="tag-label">最近用过（点击快捷填入）</span>
                 <div class="quick-tags">
                   <button
                     v-for="tag in tags.add"
@@ -644,6 +645,7 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
               </div>
+              <p v-else class="tag-empty-hint">保存后会自动记住常用加分原因，下次可直接点选</p>
             </div>
           </div>
 
@@ -695,7 +697,7 @@ onBeforeUnmount(() => {
                 placeholder="扣分原因（多个用顿号或逗号分隔）"
               />
               <div v-if="tags.deduct.length" class="tag-block">
-                <span class="tag-label">最近用过</span>
+                <span class="tag-label">最近用过（点击快捷填入）</span>
                 <div class="quick-tags">
                   <button
                     v-for="tag in tags.deduct"
@@ -710,6 +712,7 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
               </div>
+              <p v-else class="tag-empty-hint">保存后会自动记住常用扣分原因，下次可直接点选</p>
             </div>
           </div>
         </div>
@@ -795,19 +798,23 @@ onBeforeUnmount(() => {
                 :placeholder="meal.placeholder"
               />
 
-              <div v-if="tags[meal.key].length" class="quick-tags">
-                <button
-                  v-for="tag in tags[meal.key]"
-                  :key="tag"
-                  type="button"
-                  class="quick-tag meal"
-                  :class="{ selected: isSelected(meal.contentField, tag) }"
-                  @click="toggleReason(meal.contentField, tag)"
-                >
-                  <AppIcon v-if="isSelected(meal.contentField, tag)" name="check" :size="12" :stroke-width="2.6" />
-                  <span>{{ tag }}</span>
-                </button>
+              <div v-if="tags[meal.key].length" class="tag-block">
+                <span class="tag-label">最近用过（点击快捷填入）</span>
+                <div class="quick-tags">
+                  <button
+                    v-for="tag in tags[meal.key]"
+                    :key="tag"
+                    type="button"
+                    class="quick-tag meal"
+                    :class="{ selected: isSelected(meal.contentField, tag) }"
+                    @click="toggleReason(meal.contentField, tag)"
+                  >
+                    <AppIcon v-if="isSelected(meal.contentField, tag)" name="check" :size="12" :stroke-width="2.6" />
+                    <span>{{ tag }}</span>
+                  </button>
+                </div>
               </div>
+              <p v-else class="tag-empty-hint">保存后会自动记住常吃{{ meal.label }}内容，下次可直接点选</p>
             </div>
           </div>
 
@@ -874,7 +881,7 @@ onBeforeUnmount(() => {
                 placeholder="消费原因（多个用顿号或逗号分隔）"
               />
               <div v-if="tags.otherExpense.length" class="tag-block">
-                <span class="tag-label">最近用过</span>
+                <span class="tag-label">最近用过（点击快捷填入）</span>
                 <div class="quick-tags">
                   <button
                     v-for="tag in tags.otherExpense"
@@ -889,6 +896,7 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
               </div>
+              <p v-else class="tag-empty-hint">保存后会自动记住常用消费原因，下次可直接点选</p>
             </div>
           </div>
         </div>
@@ -1438,6 +1446,12 @@ onBeforeUnmount(() => {
   display: block;
   font-size: 11px;
   font-weight: 600;
+  color: var(--color-text-tertiary);
+}
+
+.tag-empty-hint {
+  margin-top: 8px;
+  font-size: 11px;
   color: var(--color-text-tertiary);
 }
 
