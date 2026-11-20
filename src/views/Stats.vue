@@ -1,95 +1,107 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import dayjs from 'dayjs'
+import AppIcon from '../components/AppIcon.vue'
+import DailyBarChart from '../components/DailyBarChart.vue'
+import ReasonRankCard from '../components/ReasonRankCard.vue'
 import {
   getThisWeekRecords,
   getThisMonthRecords,
   summarizeRecords,
   formatRunTime,
+  formatRunPace,
+  todayKey,
 } from '../utils/storage.js'
-import dayjs from 'dayjs'
-import 'dayjs/locale/zh-cn.js'
-import isoWeek from 'dayjs/plugin/isoWeek.js'
 
-dayjs.extend(isoWeek)
-dayjs.locale('zh-cn')
+const router = useRouter()
 
 const timeRange = ref('week')
 const summary = ref(null)
 const loading = ref(false)
+const loadError = ref('')
 
-const timeRangeLabel = computed(() =>
-  timeRange.value === 'week' ? '本周' : '本月'
-)
+const timeRangeLabel = computed(() => (timeRange.value === 'week' ? '本周' : '本月'))
 
 const dateRangeText = computed(() => {
   if (timeRange.value === 'week') {
     const s = dayjs().startOf('isoWeek')
     const e = dayjs().endOf('isoWeek')
-    return `${s.format('M/D')} – ${e.format('M/D')}`
-  } else {
-    return dayjs().format('YYYY年M月')
+    return `${s.format('M月D日')} – ${e.format('M月D日')}`
   }
+  return dayjs().format('YYYY年M月')
 })
 
+let loadSeq = 0
+
 async function loadStats() {
+  const seq = ++loadSeq
   loading.value = true
+  loadError.value = ''
+
   try {
     const records =
       timeRange.value === 'week' ? await getThisWeekRecords() : await getThisMonthRecords()
+    if (seq !== loadSeq) return
     summary.value = summarizeRecords(records)
   } catch (err) {
+    if (seq !== loadSeq) return
     console.error('加载统计数据失败:', err)
+    loadError.value = err.message || '加载统计数据失败，请重试'
   } finally {
-    loading.value = false
+    if (seq === loadSeq) {
+      loading.value = false
+    }
   }
 }
 
 function switchRange(range) {
+  if (timeRange.value === range) return
   timeRange.value = range
   loadStats()
 }
 
-const barMaxValue = computed(() => {
-  if (!summary.value || !summary.value.dailyScores.length) return 1
-  return Math.max(
-    ...summary.value.dailyScores.map((d) => Math.max(d.add, d.deduct)),
-    1
-  )
-})
-
-const mealDaysWithData = computed(() => {
+// 过滤各图表的有效日期
+const scoreDays = computed(() => {
   if (!summary.value) return []
-  return summary.value.dailyScores.filter(
-    (d) => d.breakfast || d.lunch || d.dinner
-  )
+  return summary.value.dailyScores.filter((d) => d.add > 0 || d.deduct > 0)
 })
 
-const mealBarMax = computed(() => {
-  if (!mealDaysWithData.value.length) return 1
-  return Math.max(
-    ...mealDaysWithData.value.map((d) => Math.max(d.breakfast, d.lunch, d.dinner)),
-    1
-  )
+const mealDays = computed(() => {
+  if (!summary.value) return []
+  return summary.value.dailyScores.filter((d) => d.breakfast > 0 || d.lunch > 0 || d.dinner > 0)
 })
 
-const runDaysWithData = computed(() => {
+const runDays = computed(() => {
   if (!summary.value) return []
   return summary.value.dailyScores.filter((d) => d.runDistance > 0)
 })
 
-const runBarMax = computed(() => {
-  if (!runDaysWithData.value.length) return 1
-  return Math.max(...runDaysWithData.value.map((d) => d.runDistance), 1)
-})
-
-const otherExpenseDaysWithData = computed(() => {
+const otherExpenseDays = computed(() => {
   if (!summary.value) return []
   return summary.value.dailyScores.filter((d) => d.otherExpense > 0)
 })
 
-const otherExpenseBarMax = computed(() => {
-  if (!otherExpenseDaysWithData.value.length) return 1
-  return Math.max(...otherExpenseDaysWithData.value.map((d) => d.otherExpense), 1)
+const scoreSeries = [
+  { key: 'add', label: '加分', colorClass: 'bar-add', prefix: '+' },
+  { key: 'deduct', label: '扣分', colorClass: 'bar-deduct', prefix: '-' },
+]
+
+const mealSeries = [
+  { key: 'breakfast', label: '早', colorClass: 'bar-meal-b', prefix: '¥', decimals: 0 },
+  { key: 'lunch', label: '午', colorClass: 'bar-meal-l', prefix: '¥', decimals: 0 },
+  { key: 'dinner', label: '晚', colorClass: 'bar-meal-d', prefix: '¥', decimals: 0 },
+]
+
+const runSeries = [{ key: 'runDistance', label: '距离', colorClass: 'bar-run', suffix: 'm' }]
+
+const otherSeries = [
+  { key: 'otherExpense', label: '金额', colorClass: 'bar-other', prefix: '¥', decimals: 0 },
+]
+
+const avgRunPace = computed(() => {
+  if (!summary.value) return '--'
+  return formatRunPace(summary.value.totalRunTime, summary.value.totalRunDistance)
 })
 
 function formatDateLabel(dateStr) {
@@ -100,9 +112,12 @@ function formatWeekday(dateStr) {
   return dayjs(dateStr).format('ddd')
 }
 
-function reasonMaxCount(reasons) {
-  if (!reasons || !reasons.length) return 1
-  return Math.max(...reasons.map((r) => r.count), 1)
+function openDayRecord(dateStr) {
+  if (dateStr === todayKey()) {
+    router.push({ path: '/' })
+  } else {
+    router.push({ path: '/', query: { date: dateStr } })
+  }
 }
 
 onMounted(() => {
@@ -113,415 +128,295 @@ onMounted(() => {
 <template>
   <div class="page">
     <div class="page-header">
-      <h1>积分统计</h1>
-      <p>{{ dateRangeText }}</p>
+      <div class="header-row">
+        <div>
+          <h1>数据复盘</h1>
+          <p>{{ dateRangeText }}</p>
+        </div>
+
+        <div class="segmented-control header-seg">
+          <button
+            type="button"
+            class="segmented-item"
+            :class="{ active: timeRange === 'week' }"
+            @click="switchRange('week')"
+          >
+            本周
+          </button>
+          <button
+            type="button"
+            class="segmented-item"
+            :class="{ active: timeRange === 'month' }"
+            @click="switchRange('month')"
+          >
+            本月
+          </button>
+        </div>
+      </div>
     </div>
 
     <div class="page-content">
-      <!-- 时间切换 -->
-      <div class="segmented-control" style="margin-bottom: 16px;">
-        <div
-          class="segmented-item"
-          :class="{ active: timeRange === 'week' }"
-          @click="switchRange('week')"
-        >
-          本周
-        </div>
-        <div
-          class="segmented-item"
-          :class="{ active: timeRange === 'month' }"
-          @click="switchRange('month')"
-        >
-          本月
-        </div>
+      <div v-if="loading" class="loading card">
+        <div class="loading-spinner"></div>
+        <div>正在汇总数据…</div>
       </div>
 
-      <div v-if="loading" class="loading">
-        <div class="loading-spinner"></div>
-        <div>加载中…</div>
+      <div v-else-if="loadError" class="error-card">
+        <div class="empty-icon-wrap">
+          <AppIcon name="alert" :size="22" />
+        </div>
+        <p class="error-text">{{ loadError }}</p>
+        <button
+          type="button"
+          class="btn btn-primary btn-sm"
+          style="margin-top: 12px;"
+          @click="loadStats"
+        >
+          <AppIcon name="refresh" :size="14" />
+          <span>重新加载</span>
+        </button>
       </div>
 
       <template v-else-if="summary">
-        <!-- 净分英雄卡 -->
-        <div class="hero-card">
-          <div class="hero-label">{{ timeRangeLabel }}净得分</div>
-          <div
-            class="hero-value"
-            :class="summary.netScore >= 0 ? 'positive' : 'negative'"
-          >
-            {{ summary.netScore >= 0 ? '+' : '' }}{{ summary.netScore }}
-          </div>
-          <div class="hero-sub">已记录 {{ summary.dayCount }} 天</div>
-        </div>
-
-        <!-- 加分 / 扣分 总览 -->
-        <div class="stat-grid" style="margin-bottom: 12px;">
-          <div class="stat-card">
-            <div class="stat-value points-positive">+{{ summary.totalAdd }}</div>
-            <div class="stat-label">{{ timeRangeLabel }}总加分</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value points-negative">-{{ summary.totalDeduct }}</div>
-            <div class="stat-label">{{ timeRangeLabel }}总扣分</div>
-          </div>
-        </div>
-
-        <!-- 三餐金额总览 -->
-        <div v-if="summary.totalMeal > 0" class="meal-hero">
-          <div class="meal-hero-label">{{ timeRangeLabel }}三餐花费</div>
-          <div class="meal-hero-value">¥{{ summary.totalMeal.toFixed(2) }}</div>
-          <div class="meal-hero-breakdown">
-            <div>
-              <span class="meal-hero-emoji">🌅</span>
-              <span class="meal-hero-name">早餐</span>
-              <span class="meal-hero-num">¥{{ summary.totalBreakfast.toFixed(2) }}</span>
+        <!-- 核心 2x2 指标卡（净得分 + 总花销） -->
+        <div class="kpi-grid">
+          <div class="card kpi-card primary-kpi">
+            <div class="kpi-label">{{ timeRangeLabel }}净得分</div>
+            <div
+              class="kpi-value tabular-nums"
+              :class="summary.netScore >= 0 ? 'primary-num' : 'points-negative'"
+            >
+              {{ summary.netScore >= 0 ? '+' : '' }}{{ summary.netScore }}
             </div>
-            <div>
-              <span class="meal-hero-emoji">☀️</span>
-              <span class="meal-hero-name">午餐</span>
-              <span class="meal-hero-num">¥{{ summary.totalLunch.toFixed(2) }}</span>
+            <div class="kpi-sub tabular-nums">
+              <span class="points-positive">加 {{ summary.totalAdd }}</span>
+              <span class="sep">·</span>
+              <span class="points-negative">扣 {{ summary.totalDeduct }}</span>
             </div>
-            <div>
-              <span class="meal-hero-emoji">🌙</span>
-              <span class="meal-hero-name">晚餐</span>
-              <span class="meal-hero-num">¥{{ summary.totalDinner.toFixed(2) }}</span>
+            <div class="kpi-foot tabular-nums">有效打卡 {{ summary.dayCount }} 天</div>
+          </div>
+
+          <div class="card kpi-card">
+            <div class="kpi-label">{{ timeRangeLabel }}总花销</div>
+            <div class="kpi-value meal-color tabular-nums">
+              ¥{{ summary.totalSpend.toFixed(0) }}
+            </div>
+            <div class="kpi-sub tabular-nums">
+              <span>三餐 ¥{{ summary.totalMeal.toFixed(0) }}</span>
+              <span class="sep">·</span>
+              <span class="other-color">其他 ¥{{ summary.totalOtherExpense.toFixed(0) }}</span>
+            </div>
+            <div class="kpi-foot tabular-nums">
+              日均 ¥{{
+                summary.dayCount > 0 ? (summary.totalSpend / summary.dayCount).toFixed(1) : '0.0'
+              }}
             </div>
           </div>
         </div>
 
-        <!-- 跑步统计总览 -->
-        <div v-if="summary.totalRunTime > 0 || summary.totalRunDistance > 0" class="run-hero">
-          <div class="run-hero-label">{{ timeRangeLabel }}跑步数据</div>
-          <div class="run-hero-grid">
-            <div class="run-hero-stat">
-              <div class="run-hero-emoji">⏱️</div>
-              <div class="run-hero-num">{{ formatRunTime(summary.totalRunTime) }}</div>
-              <div class="run-hero-name">总用时</div>
+        <!-- 三餐花费拆分卡 -->
+        <div v-if="summary.totalMeal > 0" class="card meal-breakdown-card">
+          <div class="card-title">
+            <div class="card-title-left">
+              <span class="mini-badge meal">
+                <AppIcon name="utensils" :size="15" />
+              </span>
+              <span>{{ timeRangeLabel }}三餐分布</span>
             </div>
-            <div class="run-hero-stat">
-              <div class="run-hero-emoji">📏</div>
-              <div class="run-hero-num">{{ summary.totalRunDistance }}</div>
-              <div class="run-hero-name">总距离(米)</div>
+            <span class="meal-total-text tabular-nums">¥{{ summary.totalMeal.toFixed(2) }}</span>
+          </div>
+          <div class="meal-three-grid tabular-nums">
+            <div class="meal-cell">
+              <span class="meal-cell-icon"><AppIcon name="sunrise" :size="16" /></span>
+              <span class="meal-cell-name">早餐</span>
+              <span class="meal-cell-val">¥{{ summary.totalBreakfast.toFixed(2) }}</span>
             </div>
-            <div class="run-hero-stat">
-              <div class="run-hero-emoji">⚡</div>
-              <div class="run-hero-num">{{ summary.runSpeed.toFixed(2) }}</div>
-              <div class="run-hero-name">平均速度(米/秒)</div>
+            <div class="meal-cell">
+              <span class="meal-cell-icon"><AppIcon name="sun" :size="16" /></span>
+              <span class="meal-cell-name">午餐</span>
+              <span class="meal-cell-val">¥{{ summary.totalLunch.toFixed(2) }}</span>
+            </div>
+            <div class="meal-cell">
+              <span class="meal-cell-icon"><AppIcon name="moon" :size="16" /></span>
+              <span class="meal-cell-name">晚餐</span>
+              <span class="meal-cell-val">¥{{ summary.totalDinner.toFixed(2) }}</span>
             </div>
           </div>
         </div>
 
-        <!-- 其他消费总览 -->
-        <div v-if="summary.totalOtherExpense > 0" class="other-hero">
-          <div class="other-hero-label">{{ timeRangeLabel }}其他消费</div>
-          <div class="other-hero-value">¥{{ summary.totalOtherExpense.toFixed(2) }}</div>
+        <!-- 跑步累计汇总卡 -->
+        <div
+          v-if="summary.totalRunTime > 0 || summary.totalRunDistance > 0"
+          class="card run-summary-card"
+        >
+          <div class="card-title">
+            <div class="card-title-left">
+              <span class="mini-badge run">
+                <AppIcon name="run" :size="15" />
+              </span>
+              <span>{{ timeRangeLabel }}跑步累计</span>
+            </div>
+            <span v-if="summary.runSpeed > 0" class="pace-chip tabular-nums">
+              均配速 {{ avgRunPace }}
+            </span>
+          </div>
+          <div class="run-grid tabular-nums">
+            <div class="run-cell">
+              <div class="run-num">{{ formatRunTime(summary.totalRunTime) }}</div>
+              <div class="run-lbl">总用时</div>
+            </div>
+            <div class="run-cell">
+              <div class="run-num">
+                {{
+                  summary.totalRunDistance >= 1000
+                    ? `${(summary.totalRunDistance / 1000).toFixed(2)} km`
+                    : `${summary.totalRunDistance} 米`
+                }}
+              </div>
+              <div class="run-lbl">总距离</div>
+            </div>
+            <div class="run-cell">
+              <div class="run-num">{{ summary.runSpeed.toFixed(2) }}</div>
+              <div class="run-lbl">米/秒</div>
+            </div>
+          </div>
         </div>
 
-        <!-- 每日得分柱状图 -->
+        <!-- 每日趋势柱状图（自动支持月度横向滚动） -->
+        <DailyBarChart
+          title="每日加扣分趋势"
+          icon="chart"
+          icon-variant="primary"
+          :days="scoreDays"
+          :series="scoreSeries"
+        />
+
+        <DailyBarChart
+          title="每日三餐花费"
+          icon="utensils"
+          icon-variant="meal"
+          :days="mealDays"
+          :series="mealSeries"
+        />
+
+        <DailyBarChart
+          title="每日跑步距离"
+          icon="run"
+          icon-variant="run"
+          :days="runDays"
+          :series="runSeries"
+        />
+
+        <DailyBarChart
+          title="每日其他消费"
+          icon="bag"
+          icon-variant="other"
+          :days="otherExpenseDays"
+          :series="otherSeries"
+        />
+
+        <!-- 原因与内容频次排行（复用组件） -->
+        <ReasonRankCard
+          title="高频加分习惯"
+          icon="spark"
+          variant="add"
+          :items="summary.addReasons"
+        />
+        <ReasonRankCard
+          title="扣分原因复盘"
+          icon="minus"
+          variant="deduct"
+          :items="summary.deductReasons"
+        />
+        <ReasonRankCard
+          title="早餐常吃"
+          icon="sunrise"
+          variant="meal"
+          :items="summary.breakfastReasons"
+        />
+        <ReasonRankCard
+          title="午餐常吃"
+          icon="sun"
+          variant="meal"
+          :items="summary.lunchReasons"
+        />
+        <ReasonRankCard
+          title="晚餐常吃"
+          icon="moon"
+          variant="meal"
+          :items="summary.dinnerReasons"
+        />
+        <ReasonRankCard
+          title="其他消费项"
+          icon="bag"
+          variant="other"
+          :items="summary.otherExpenseReasons"
+        />
+
+        <!-- 每日明细列表（点击可直接跳去查看/编辑） -->
         <div v-if="summary.dailyScores.length" class="card">
-          <div class="card-title">📊 每日得分</div>
-          <div class="bar-chart">
-            <div
-              v-for="day in summary.dailyScores"
-              :key="day.date"
-              class="bar-group"
-            >
-              <div class="bar-bars">
-                <div
-                  class="bar bar-add"
-                  :style="{ height: (day.add / barMaxValue) * 100 + '%' }"
-                  :title="'加分: +' + day.add"
-                >
-                  <span class="bar-val" v-if="day.add">+{{ day.add }}</span>
-                </div>
-                <div
-                  class="bar bar-deduct"
-                  :style="{ height: (day.deduct / barMaxValue) * 100 + '%' }"
-                  :title="'扣分: -' + day.deduct"
-                >
-                  <span class="bar-val" v-if="day.deduct">-{{ day.deduct }}</span>
-                </div>
-              </div>
-              <div class="bar-label">{{ formatDateLabel(day.date) }}</div>
-              <div class="bar-weekday">{{ formatWeekday(day.date) }}</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 加分原因统计 -->
-        <div v-if="summary.addReasons.length" class="card">
           <div class="card-title">
-            <span class="reason-badge add">+</span>
-            加分原因
-          </div>
-          <div class="reason-list">
-            <div
-              v-for="item in summary.addReasons"
-              :key="item.reason"
-              class="reason-item"
-            >
-              <div class="reason-info">
-                <span class="reason-text">{{ item.reason }}</span>
-                <span class="reason-count">{{ item.count }}次</span>
-              </div>
-              <div class="reason-bar-bg">
-                <div
-                  class="reason-bar add"
-                  :style="{ width: (item.count / reasonMaxCount(summary.addReasons)) * 100 + '%' }"
-                ></div>
-              </div>
+            <div class="card-title-left">
+              <span class="mini-badge primary">
+                <AppIcon name="calendar" :size="15" />
+              </span>
+              <span>每日明细</span>
             </div>
+            <span class="detail-tip">点击可编辑</span>
           </div>
-        </div>
 
-        <!-- 扣分原因统计 -->
-        <div v-if="summary.deductReasons.length" class="card">
-          <div class="card-title">
-            <span class="reason-badge deduct">−</span>
-            扣分原因
-          </div>
-          <div class="reason-list">
-            <div
-              v-for="item in summary.deductReasons"
-              :key="item.reason"
-              class="reason-item"
-            >
-              <div class="reason-info">
-                <span class="reason-text">{{ item.reason }}</span>
-                <span class="reason-count">{{ item.count }}次</span>
-              </div>
-              <div class="reason-bar-bg">
-                <div
-                  class="reason-bar deduct"
-                  :style="{ width: (item.count / reasonMaxCount(summary.deductReasons)) * 100 + '%' }"
-                ></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 每日三餐柱状图 -->
-        <div v-if="mealDaysWithData.length" class="card">
-          <div class="card-title">🍱 每日三餐</div>
-          <div class="bar-chart">
-            <div
-              v-for="day in mealDaysWithData"
-              :key="day.date"
-              class="bar-group"
-            >
-              <div class="bar-bars">
-                <div
-                  class="bar bar-meal-b"
-                  :style="{ height: (day.breakfast / mealBarMax) * 100 + '%' }"
-                  :title="'早餐: ¥' + day.breakfast"
-                >
-                  <span class="bar-val" v-if="day.breakfast">¥{{ day.breakfast.toFixed(0) }}</span>
-                </div>
-                <div
-                  class="bar bar-meal-l"
-                  :style="{ height: (day.lunch / mealBarMax) * 100 + '%' }"
-                  :title="'午餐: ¥' + day.lunch"
-                >
-                  <span class="bar-val" v-if="day.lunch">¥{{ day.lunch.toFixed(0) }}</span>
-                </div>
-                <div
-                  class="bar bar-meal-d"
-                  :style="{ height: (day.dinner / mealBarMax) * 100 + '%' }"
-                  :title="'晚餐: ¥' + day.dinner"
-                >
-                  <span class="bar-val" v-if="day.dinner">¥{{ day.dinner.toFixed(0) }}</span>
-                </div>
-              </div>
-              <div class="bar-label">{{ formatDateLabel(day.date) }}</div>
-              <div class="bar-weekday">{{ formatWeekday(day.date) }}</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 每日跑步距离柱状图 -->
-        <div v-if="runDaysWithData.length" class="card">
-          <div class="card-title">🏃 每日跑步距离</div>
-          <div class="bar-chart">
-            <div
-              v-for="day in runDaysWithData"
-              :key="day.date"
-              class="bar-group"
-            >
-              <div class="bar-bars">
-                <div
-                  class="bar bar-run"
-                  :style="{ height: (day.runDistance / runBarMax) * 100 + '%' }"
-                  :title="'距离: ' + day.runDistance + ' 米'"
-                >
-                  <span class="bar-val" v-if="day.runDistance">{{ day.runDistance }}米</span>
-                </div>
-              </div>
-              <div class="bar-label">{{ formatDateLabel(day.date) }}</div>
-              <div class="bar-weekday">{{ formatWeekday(day.date) }}</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 每日其他消费柱状图 -->
-        <div v-if="otherExpenseDaysWithData.length" class="card">
-          <div class="card-title">🛍️ 每日其他消费</div>
-          <div class="bar-chart">
-            <div
-              v-for="day in otherExpenseDaysWithData"
-              :key="day.date"
-              class="bar-group"
-            >
-              <div class="bar-bars">
-                <div
-                  class="bar bar-other"
-                  :style="{ height: (day.otherExpense / otherExpenseBarMax) * 100 + '%' }"
-                  :title="'金额: ¥' + day.otherExpense"
-                >
-                  <span class="bar-val" v-if="day.otherExpense">¥{{ day.otherExpense.toFixed(0) }}</span>
-                </div>
-              </div>
-              <div class="bar-label">{{ formatDateLabel(day.date) }}</div>
-              <div class="bar-weekday">{{ formatWeekday(day.date) }}</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 三餐内容统计 -->
-        <div v-if="summary.breakfastReasons.length" class="card">
-          <div class="card-title">
-            <span class="reason-badge meal">🌅</span>
-            早餐内容
-          </div>
-          <div class="reason-list">
-            <div
-              v-for="item in summary.breakfastReasons"
-              :key="item.reason"
-              class="reason-item"
-            >
-              <div class="reason-info">
-                <span class="reason-text">{{ item.reason }}</span>
-                <span class="reason-count">{{ item.count }}次</span>
-              </div>
-              <div class="reason-bar-bg">
-                <div
-                  class="reason-bar meal"
-                  :style="{ width: (item.count / reasonMaxCount(summary.breakfastReasons)) * 100 + '%' }"
-                ></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="summary.lunchReasons.length" class="card">
-          <div class="card-title">
-            <span class="reason-badge meal">☀️</span>
-            午餐内容
-          </div>
-          <div class="reason-list">
-            <div
-              v-for="item in summary.lunchReasons"
-              :key="item.reason"
-              class="reason-item"
-            >
-              <div class="reason-info">
-                <span class="reason-text">{{ item.reason }}</span>
-                <span class="reason-count">{{ item.count }}次</span>
-              </div>
-              <div class="reason-bar-bg">
-                <div
-                  class="reason-bar meal"
-                  :style="{ width: (item.count / reasonMaxCount(summary.lunchReasons)) * 100 + '%' }"
-                ></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="summary.dinnerReasons.length" class="card">
-          <div class="card-title">
-            <span class="reason-badge meal">🌙</span>
-            晚餐内容
-          </div>
-          <div class="reason-list">
-            <div
-              v-for="item in summary.dinnerReasons"
-              :key="item.reason"
-              class="reason-item"
-            >
-              <div class="reason-info">
-                <span class="reason-text">{{ item.reason }}</span>
-                <span class="reason-count">{{ item.count }}次</span>
-              </div>
-              <div class="reason-bar-bg">
-                <div
-                  class="reason-bar meal"
-                  :style="{ width: (item.count / reasonMaxCount(summary.dinnerReasons)) * 100 + '%' }"
-                ></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 其他消费原因统计 -->
-        <div v-if="summary.otherExpenseReasons.length" class="card">
-          <div class="card-title">
-            <span class="reason-badge other">🛍️</span>
-            其他消费原因
-          </div>
-          <div class="reason-list">
-            <div
-              v-for="item in summary.otherExpenseReasons"
-              :key="item.reason"
-              class="reason-item"
-            >
-              <div class="reason-info">
-                <span class="reason-text">{{ item.reason }}</span>
-                <span class="reason-count">{{ item.count }}次</span>
-              </div>
-              <div class="reason-bar-bg">
-                <div
-                  class="reason-bar other"
-                  :style="{ width: (item.count / reasonMaxCount(summary.otherExpenseReasons)) * 100 + '%' }"
-                ></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 每日明细 -->
-        <div v-if="summary.dailyScores.length" class="card">
-          <div class="card-title">📋 每日明细</div>
           <div class="detail-list">
-            <div
+            <button
               v-for="day in [...summary.dailyScores].reverse()"
               :key="day.date"
-              class="detail-item"
+              type="button"
+              class="detail-row"
+              @click="openDayRecord(day.date)"
             >
-              <div class="detail-date">
+              <div class="detail-date tabular-nums">
                 <span class="detail-day">{{ formatDateLabel(day.date) }}</span>
                 <span class="detail-weekday">{{ formatWeekday(day.date) }}</span>
               </div>
-              <div class="detail-scores">
-                <span class="points-positive" v-if="day.add">+{{ day.add }}</span>
-                <span class="points-negative" v-if="day.deduct">-{{ day.deduct }}</span>
-                <span class="meal-color-sm" v-if="day.mealTotal">¥{{ day.mealTotal.toFixed(1) }}</span>
-                <span class="other-color-sm" v-if="day.otherExpense">¥{{ day.otherExpense.toFixed(1) }}</span>
-                <span class="run-color-sm" v-if="day.runDistance">{{ day.runDistance }}米</span>
+
+              <div class="detail-chips tabular-nums">
+                <span v-if="day.add > 0" class="chip add">+{{ day.add }}</span>
+                <span v-if="day.deduct > 0" class="chip deduct">-{{ day.deduct }}</span>
+                <span v-if="day.mealTotal > 0" class="chip meal">
+                  餐 ¥{{ day.mealTotal.toFixed(1) }}
+                </span>
+                <span v-if="day.otherExpense > 0" class="chip other">
+                  杂 ¥{{ day.otherExpense.toFixed(1) }}
+                </span>
+                <span v-if="day.runDistance > 0" class="chip run">
+                  跑 {{ day.runDistance }}m
+                </span>
               </div>
+
               <div
-                class="detail-net"
+                class="detail-net tabular-nums"
                 :class="day.net >= 0 ? 'points-positive' : 'points-negative'"
               >
                 {{ day.net >= 0 ? '+' : '' }}{{ day.net }}
               </div>
-            </div>
+            </button>
           </div>
         </div>
 
-        <div v-if="summary.dayCount === 0" class="empty-state" style="margin-top: 30px;">
-          <div class="icon">📊</div>
-          <p>{{ timeRangeLabel }}暂无记录</p>
-          <p style="font-size: 12px; margin-top: 4px;">去首页记录今天的积分吧</p>
+        <!-- 空状态 -->
+        <div v-if="summary.dayCount === 0" class="empty-state">
+          <div class="empty-icon-wrap">
+            <AppIcon name="chart" :size="24" />
+          </div>
+          <p class="empty-title">{{ timeRangeLabel }}还没有打卡记录</p>
+          <p class="empty-sub">去「今日记录」记下第一笔成长数据吧</p>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            style="margin-top: 14px;"
+            @click="router.push('/')"
+          >
+            去打卡
+          </button>
         </div>
       </template>
     </div>
@@ -529,277 +424,221 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* 英雄卡 */
-.hero-card {
-  background: var(--color-bg-white);
-  border-radius: var(--radius-lg);
-  padding: 24px 20px;
-  margin-bottom: 12px;
-  text-align: center;
-  box-shadow: var(--shadow-sm);
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.hero-label {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  margin-bottom: 6px;
-  font-weight: 500;
+.header-seg {
+  width: 132px;
+  flex-shrink: 0;
 }
 
-.hero-value {
-  font-size: 64px;
-  font-weight: 700;
-  letter-spacing: -1.5px;
-  line-height: 1.05;
-  margin-bottom: 6px;
-}
-
-.hero-value.positive { color: var(--color-primary); }
-.hero-value.negative { color: var(--color-danger); }
-
-.hero-sub {
+.header-seg .segmented-item {
+  min-height: 32px;
   font-size: 12px;
-  color: var(--color-text-secondary);
+  padding: 4px 8px;
 }
 
-/* 三餐英雄卡 */
-.meal-hero {
-  background: var(--color-bg-white);
-  border-radius: var(--radius-lg);
-  padding: 22px 20px;
-  margin-bottom: 12px;
-  text-align: center;
-  box-shadow: var(--shadow-sm);
-  border-left: 4px solid var(--color-warning);
-}
-
-.meal-hero-label {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  margin-bottom: 4px;
-  font-weight: 500;
-}
-
-.meal-hero-value {
-  font-size: 44px;
-  font-weight: 700;
-  color: var(--color-warning);
-  letter-spacing: -1px;
-  line-height: 1.1;
+/* 核心 2x2 KPI 卡片 */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
   margin-bottom: 12px;
 }
 
-.meal-hero-breakdown {
-  display: flex;
-  justify-content: space-around;
-  padding-top: 10px;
-  border-top: 1px solid rgba(60, 60, 67, 0.08);
+.kpi-card {
+  margin-bottom: 0;
+  padding: 15px 14px;
 }
 
-.meal-hero-breakdown > div {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
+.primary-kpi {
+  background: linear-gradient(180deg, #FFFDF8 0%, #FFFFFF 100%);
+  border-color: #FDE68A;
 }
 
-.meal-hero-emoji {
-  font-size: 18px;
-}
-
-.meal-hero-name {
-  font-size: 11px;
-  color: var(--color-text-secondary);
-}
-
-.meal-hero-num {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-/* 原因徽章 */
-.reason-badge {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
+.kpi-label {
+  font-size: 12px;
   font-weight: 700;
-  color: white;
-}
-
-.reason-badge.add { background: var(--color-success); }
-.reason-badge.deduct { background: var(--color-danger); }
-.reason-badge.meal { background: var(--color-warning); font-size: 11px; }
-
-/* 柱状图 */
-.bar-chart {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-  height: 160px;
-  padding-top: 22px;
-}
-
-.bar-group {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  height: 100%;
-}
-
-.bar-bars {
-  flex: 1;
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  width: 100%;
-}
-
-.bar {
-  flex: 1;
-  min-height: 2px;
-  border-radius: 4px 4px 0 0;
-  position: relative;
-  transition: height 0.5s ease;
-}
-
-.bar-add {
-  background: linear-gradient(180deg, #5DDF7F, #34C759);
-}
-
-.bar-deduct {
-  background: linear-gradient(180deg, #FF7875, #FF3B30);
-}
-
-.bar-meal-b {
-  background: linear-gradient(180deg, #FFD28A, #FFB13B);
-}
-
-.bar-meal-l {
-  background: linear-gradient(180deg, #FFB13B, #FF9500);
-}
-
-.bar-meal-d {
-  background: linear-gradient(180deg, #FF9500, #FF7B00);
-}
-
-.bar-val {
-  position: absolute;
-  top: -16px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 9px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.bar-add .bar-val { color: #248A3D; }
-.bar-deduct .bar-val { color: #C92119; }
-.bar-meal-b .bar-val,
-.bar-meal-l .bar-val,
-.bar-meal-d .bar-val { color: #C27400; }
-
-.bar-label {
-  font-size: 10px;
-  color: var(--color-text-secondary);
-  margin-top: 6px;
-  font-weight: 500;
-}
-
-.bar-weekday {
-  font-size: 9px;
   color: var(--color-text-tertiary);
 }
 
-/* 原因统计 */
-.reason-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+.kpi-value {
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.8px;
+  margin-top: 4px;
 }
 
-.reason-item {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
+.primary-num {
+  color: var(--color-primary);
 }
 
-.reason-info {
-  display: flex;
-  justify-content: space-between;
+.kpi-sub {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  margin-top: 6px;
+}
+
+.kpi-sub .sep {
+  margin: 0 4px;
+  color: var(--color-text-tertiary);
+}
+
+.kpi-foot {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  margin-top: 3px;
+}
+
+/* 小图标徽章 */
+.mini-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
+}
+.mini-badge.primary {
+  background: var(--color-primary-light);
+  color: var(--color-primary-deep);
+}
+.mini-badge.meal {
+  background: var(--color-meal-light);
+  color: var(--color-primary-deep);
+}
+.mini-badge.run {
+  background: var(--color-run-light);
+  color: var(--color-run);
 }
 
-.reason-text {
+/* 三餐分布 */
+.meal-total-text {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--color-primary-deep);
+}
+
+.meal-three-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.meal-cell {
+  background: var(--color-bg-muted);
+  border-radius: 14px;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.meal-cell-icon {
+  color: var(--color-primary-deep);
+}
+
+.meal-cell-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+}
+
+.meal-cell-val {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 800;
   color: var(--color-text);
 }
 
-.reason-count {
-  font-size: 12px;
-  color: var(--color-text-secondary);
+/* 跑步汇总 */
+.pace-chip {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-success);
+  background: var(--color-success-light);
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+.run-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.run-cell {
+  background: var(--color-success-light);
+  border-radius: 14px;
+  padding: 10px 6px;
+  text-align: center;
+}
+
+.run-num {
+  font-size: 15px;
+  font-weight: 800;
+  color: #065F46;
+}
+
+.run-lbl {
+  font-size: 11px;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.reason-bar-bg {
-  height: 6px;
-  background: var(--color-bg-input);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.reason-bar {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.6s ease;
-  min-width: 6px;
-}
-
-.reason-bar.add {
-  background: linear-gradient(90deg, #34C759, #5DDF7F);
-}
-
-.reason-bar.deduct {
-  background: linear-gradient(90deg, #FF3B30, #FF7875);
-}
-
-.reason-bar.meal {
-  background: linear-gradient(90deg, #FF9500, #FFB13B);
+  color: var(--color-success);
+  margin-top: 2px;
 }
 
 /* 每日明细 */
+.detail-tip {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+}
+
 .detail-list {
   display: flex;
   flex-direction: column;
 }
 
-.detail-item {
+.detail-row {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
   display: flex;
   align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(60, 60, 67, 0.08);
+  gap: 10px;
+  padding: 11px 4px;
+  border-bottom: 1px solid var(--color-divider);
+  cursor: pointer;
 }
 
-.detail-item:last-child {
+.detail-row:last-child {
   border-bottom: none;
 }
 
+.detail-row:active {
+  background: var(--color-bg-muted);
+  border-radius: 10px;
+}
+
 .detail-date {
+  width: 44px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  width: 50px;
 }
 
 .detail-day {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 800;
+  color: var(--color-text);
 }
 
 .detail-weekday {
@@ -807,135 +646,63 @@ onMounted(() => {
   color: var(--color-text-tertiary);
 }
 
-.detail-scores {
+.detail-chips {
   flex: 1;
   display: flex;
-  gap: 10px;
-  font-size: 13px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 7px;
+}
+.chip.add {
+  background: var(--color-success-light);
+  color: var(--color-success);
+}
+.chip.deduct {
+  background: var(--color-danger-light);
+  color: var(--color-danger);
+}
+.chip.meal {
+  background: var(--color-meal-light);
+  color: var(--color-primary-deep);
+}
+.chip.other {
+  background: var(--color-other-light);
+  color: var(--color-other);
+}
+.chip.run {
+  background: var(--color-run-light);
+  color: #065F46;
 }
 
 .detail-net {
-  font-size: 16px;
-  font-weight: 700;
-  width: 50px;
+  width: 42px;
+  flex-shrink: 0;
   text-align: right;
-  font-variant-numeric: tabular-nums;
+  font-size: 16px;
+  font-weight: 800;
 }
 
-.meal-color-sm {
-  color: var(--color-warning);
-}
-
-.run-color-sm {
-  color: #0A7E3B;
-}
-
-.other-color-sm {
-  color: #7C3AED;
-}
-
-/* 其他消费英雄卡 */
-.other-hero {
-  background: var(--color-bg-white);
-  border-radius: var(--radius-lg);
-  padding: 18px 20px 14px;
-  margin-bottom: 12px;
-  text-align: center;
-  box-shadow: var(--shadow-sm);
-  border-left: 4px solid #7C3AED;
-}
-
-.other-hero-label {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  margin-bottom: 4px;
-  font-weight: 500;
-}
-
-.other-hero-value {
-  font-size: 40px;
+.empty-title {
+  font-size: 15px;
   font-weight: 700;
-  color: #7C3AED;
-  letter-spacing: -1px;
-  line-height: 1.1;
+  color: var(--color-text);
 }
 
-/* 跑步英雄卡 */
-.run-hero {
-  background: var(--color-bg-white);
-  border-radius: var(--radius-lg);
-  padding: 18px 16px 14px;
-  margin-bottom: 12px;
-  box-shadow: var(--shadow-sm);
-  border-left: 4px solid #34C759;
+.empty-sub {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-top: 4px;
 }
 
-.run-hero-label {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  margin-bottom: 12px;
-  font-weight: 500;
-  text-align: center;
-}
-
-.run-hero-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
-}
-
-.run-hero-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-
-.run-hero-emoji {
-  font-size: 18px;
-  margin-bottom: 2px;
-}
-
-.run-hero-num {
-  font-size: 18px;
-  font-weight: 700;
-  color: #0A7E3B;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.5px;
-}
-
-.run-hero-name {
-  font-size: 11px;
-  color: var(--color-text-secondary);
-  text-align: center;
-}
-
-/* 跑步柱状图 */
-.bar-run {
-  background: linear-gradient(180deg, #5DDF7F, #34C759);
-}
-
-.bar-run .bar-val {
-  color: #0A7E3B;
-}
-
-/* 其他消费柱状图 */
-.bar-other {
-  background: linear-gradient(180deg, #C084FC, #7C3AED);
-}
-
-.bar-other .bar-val {
-  color: #6B21A8;
-}
-
-.reason-badge.other {
-  background: #7C3AED;
-  font-size: 11px;
-}
-
-.reason-bar.other {
-  background: linear-gradient(90deg, #7C3AED, #C084FC);
+.error-text {
+  font-size: 14px;
+  color: var(--color-danger);
+  font-weight: 600;
 }
 </style>

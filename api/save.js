@@ -3,10 +3,15 @@
  *
  * 保存一天的积分记录到飞书多维表格
  * 如果当天已有记录则更新，没有则新增
- *
- * Body: { date, addPoints, addReason, deductPoints, deductReason }
  */
-import { feishuHeaders, bitableBaseUrl } from './_feishu.js'
+import {
+  feishuHeaders,
+  bitableBaseUrl,
+  extractText,
+  fetchAllRecords,
+  isValidDateStr,
+  nonNegativeNumber,
+} from './_feishu.js'
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -19,64 +24,66 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { date, addPoints, addReason, deductPoints, deductReason } = req.body
+    const body = req.body || {}
+    const date = typeof body.date === 'string' ? body.date.trim() : ''
 
-    if (!date) {
-      return res.status(400).json({ error: '缺少 date 字段' })
+    if (!isValidDateStr(date)) {
+      return res.status(400).json({ error: '缺少或非法的 date 字段，格式应为 YYYY-MM-DD' })
     }
 
     const headers = await feishuHeaders()
     const baseUrl = bitableBaseUrl()
 
-    // 1. 拉取所有记录，按 date 精确匹配（飞书的 filter is 筛选对文本字段不稳定）
+    // 若查询出错直接抛异常，绝不误判为“无记录”导致重复新增
     const existingId = await findRecordByDate(baseUrl, headers, date)
 
     const fields = {
       '日期': date,
-      '加分': Number(addPoints) || 0,
-      '加分原因': addReason || '',
-      '扣分': Number(deductPoints) || 0,
-      '扣分原因': deductReason || '',
-      '早餐金额': Number(req.body.breakfastAmount) || 0,
-      '早餐内容': req.body.breakfastContent || '',
-      '午餐金额': Number(req.body.lunchAmount) || 0,
-      '午餐内容': req.body.lunchContent || '',
-      '晚餐金额': Number(req.body.dinnerAmount) || 0,
-      '晚餐内容': req.body.dinnerContent || '',
-      '其他消费': Number(req.body.otherExpense) || 0,
-      '其他消费原因': req.body.otherExpenseReason || '',
-      '跑步用时': Number(req.body.runTime) || 0,
-      '跑步距离': Number(req.body.runDistance) || 0,
+      '加分': nonNegativeNumber(body.addPoints, 2),
+      '加分原因': String(body.addReason || '').trim(),
+      '扣分': nonNegativeNumber(body.deductPoints, 2),
+      '扣分原因': String(body.deductReason || '').trim(),
+      '早餐金额': nonNegativeNumber(body.breakfastAmount, 2),
+      '早餐内容': String(body.breakfastContent || '').trim(),
+      '午餐金额': nonNegativeNumber(body.lunchAmount, 2),
+      '午餐内容': String(body.lunchContent || '').trim(),
+      '晚餐金额': nonNegativeNumber(body.dinnerAmount, 2),
+      '晚餐内容': String(body.dinnerContent || '').trim(),
+      '其他消费': nonNegativeNumber(body.otherExpense, 2),
+      '其他消费原因': String(body.otherExpenseReason || '').trim(),
+      '跑步用时': Math.floor(nonNegativeNumber(body.runTime, 0)),
+      '跑步距离': nonNegativeNumber(body.runDistance, 2),
     }
 
-    let result
-
+    let response
     if (existingId) {
-      // 2a. 已有记录 → 更新
-      const updateRes = await fetch(`${baseUrl}/${existingId}`, {
+      response = await fetch(`${baseUrl}/${existingId}`, {
         method: 'PUT',
         headers,
         body: JSON.stringify({ fields }),
       })
-      result = await updateRes.json()
     } else {
-      // 2b. 没有记录 → 新增
-      const createRes = await fetch(baseUrl, {
+      response = await fetch(baseUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify({ fields }),
       })
-      result = await createRes.json()
     }
 
+    if (!response.ok) {
+      throw new Error(`飞书写入 HTTP 错误: ${response.status}`)
+    }
+
+    const result = await response.json()
     if (result.code !== 0) {
       console.error('飞书 API 错误:', result)
-      return res.status(500).json({ error: result.msg })
+      return res.status(500).json({ error: result.msg || '飞书保存失败', code: result.code })
     }
 
     return res.status(200).json({
       success: true,
       action: existingId ? 'updated' : 'created',
+      id: result.data?.record?.record_id || existingId || '',
     })
   } catch (err) {
     console.error('保存记录失败:', err)
@@ -86,39 +93,14 @@ export default async function handler(req, res) {
 
 /**
  * 按日期查找已有记录，返回 record_id 或 null
- * 策略：拉取所有记录（多页），前端按日期精确匹配
+ * 查询失败时直接抛错，避免误新建重复记录
  */
 async function findRecordByDate(baseUrl, headers, date) {
-  let allItems = []
-  let pageToken = ''
-
-  do {
-    const params = new URLSearchParams({ page_size: '500' })
-    if (pageToken) params.set('page_token', pageToken)
-
-    const response = await fetch(`${baseUrl}?${params}`, { headers })
-    const data = await response.json()
-
-    if (data.code !== 0) {
-      console.error('查询已有记录失败:', data)
-      return null
-    }
-
-    allItems = allItems.concat(data.data?.items || [])
-    pageToken = data.data?.page_token || ''
-  } while (pageToken)
-
-  // 精确匹配日期字符串
+  const allItems = await fetchAllRecords(baseUrl, headers)
   const target = String(date).trim()
-  for (const item of allItems) {
-    const fieldValue = item.fields?.['日期']
-    const fieldText =
-      typeof fieldValue === 'string'
-        ? fieldValue.trim()
-        : Array.isArray(fieldValue)
-        ? fieldValue.map((s) => s.text || '').join('').trim()
-        : ''
 
+  for (const item of allItems) {
+    const fieldText = extractText(item.fields?.['日期'])
     if (fieldText === target) {
       return item.record_id
     }

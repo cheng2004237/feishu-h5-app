@@ -5,19 +5,19 @@ const routes = [
     path: '/',
     name: 'Home',
     component: () => import('../views/Home.vue'),
-    meta: { title: '今日记录' },
+    meta: { title: '今日成长' },
   },
   {
     path: '/history',
     name: 'History',
     component: () => import('../views/History.vue'),
-    meta: { title: '历史记录' },
+    meta: { title: '成长日历' },
   },
   {
     path: '/stats',
     name: 'Stats',
     component: () => import('../views/Stats.vue'),
-    meta: { title: '积分统计' },
+    meta: { title: '数据复盘' },
   },
 ]
 
@@ -27,7 +27,7 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
-  document.title = `${to.meta.title || '程怿一积分'}`
+  document.title = to.meta.title ? `${to.meta.title} · 学生成长积分` : '学生成长积分'
   next()
 })
 

@@ -1,273 +1,407 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getRecordsInRange, todayKey, formatRunTime } from '../utils/storage.js'
 import dayjs from 'dayjs'
-import isSameOrBefore from 'dayjs/plugin/isSameOrBefore.js'
-import isSameOrAfter from 'dayjs/plugin/isSameOrAfter.js'
-
-dayjs.extend(isSameOrBefore)
-dayjs.extend(isSameOrAfter)
+import AppIcon from '../components/AppIcon.vue'
+import {
+  getRecordsInRange,
+  todayKey,
+  hasAnyContent,
+  roundMoney,
+  formatRunTime,
+  formatRunPace,
+} from '../utils/storage.js'
 
 const router = useRouter()
 
-// 状态：当前查看的月份 (用该月1号表示)
 const currentMonthDate = ref(dayjs().startOf('month'))
-
-// 状态：当前选中的日期 (YYYY-MM-DD)
 const selectedDateKey = ref(todayKey())
-
-// 状态：当前月的记录映射 { 'YYYY-MM-DD': record_object }
 const monthRecords = ref({})
 const loading = ref(false)
+const loadError = ref('')
 
-// 计算：显示的年月
 const monthTitle = computed(() => currentMonthDate.value.format('YYYY年 M月'))
 
-// 计算：当前日历需要显示的格子 (包含前置和后置空白)
+const recordedDayCount = computed(() => Object.keys(monthRecords.value).length)
+
 const calendarDays = computed(() => {
   const startOfMonth = currentMonthDate.value.startOf('month')
-  const endOfMonth = currentMonthDate.value.endOf('month')
-  
-  // startOfMonth.day() 返回 0-6 (0 是周日，1 是周一)
-  // 我们日历从周一开始，所以要计算前面需要补几个空格
-  let startOffset = startOfMonth.day() === 0 ? 6 : startOfMonth.day() - 1
-  
+  // 周一为第一列：周日(0)补6格，周一(1)补0格
+  const startOffset = startOfMonth.day() === 0 ? 6 : startOfMonth.day() - 1
   const daysInMonth = currentMonthDate.value.daysInMonth()
   const days = []
-  
-  // 前置空白格子
+
   for (let i = 0; i < startOffset; i++) {
     days.push({ empty: true, key: `prev-${i}` })
   }
-  
-  // 实际日期格子
+
+  const today = todayKey()
   for (let i = 1; i <= daysInMonth; i++) {
-    const date = startOfMonth.date(i)
-    const dateStr = date.format('YYYY-MM-DD')
+    const dateStr = startOfMonth.date(i).format('YYYY-MM-DD')
+    const rec = monthRecords.value[dateStr]
+    const hasRec = Boolean(rec)
+    const net = hasRec
+      ? Math.round((roundMoney(rec.addPoints) - roundMoney(rec.deductPoints)) * 100) / 100
+      : 0
+
     days.push({
       empty: false,
       date: i,
-      dateStr: dateStr,
-      isToday: dateStr === todayKey(),
-      hasRecord: !!monthRecords.value[dateStr]
+      dateStr,
+      isToday: dateStr === today,
+      hasRecord: hasRec,
+      net,
     })
   }
-  
+
   return days
 })
 
-// 计算：选中日期的记录内容
-const selectedRecord = computed(() => monthRecords.value[selectedDateKey.value])
-
-// 计算：选中日期是否是今天
+const selectedRecord = computed(() => monthRecords.value[selectedDateKey.value] || null)
 const isSelectedToday = computed(() => selectedDateKey.value === todayKey())
 
-// 获取当月数据
-async function loadMonthData() {
+const selectedNet = computed(() => {
+  if (!selectedRecord.value) return 0
+  return (
+    Math.round(
+      (roundMoney(selectedRecord.value.addPoints) - roundMoney(selectedRecord.value.deductPoints)) *
+        100
+    ) / 100
+  )
+})
+
+const selectedMealTotal = computed(() => {
+  if (!selectedRecord.value) return 0
+  return roundMoney(
+    roundMoney(selectedRecord.value.breakfastAmount) +
+      roundMoney(selectedRecord.value.lunchAmount) +
+      roundMoney(selectedRecord.value.dinnerAmount)
+  )
+})
+
+const hasSelectedRun = computed(() => {
+  if (!selectedRecord.value) return false
+  return Number(selectedRecord.value.runTime) > 0 || Number(selectedRecord.value.runDistance) > 0
+})
+
+let loadSeq = 0
+
+async function loadMonthData(autoPickDay = false) {
+  const seq = ++loadSeq
   loading.value = true
+  loadError.value = ''
   monthRecords.value = {}
-  
-  const startStr = currentMonthDate.value.startOf('month').format('YYYY-MM-DD')
+
+  const monthStart = currentMonthDate.value.startOf('month')
+  const startStr = monthStart.format('YYYY-MM-DD')
   const endStr = currentMonthDate.value.endOf('month').format('YYYY-MM-DD')
-  
-  const records = await getRecordsInRange(startStr, endStr)
-  
-  const map = {}
-  records.forEach(r => {
-    if (r.date) map[r.date] = r
-  })
-  
-  monthRecords.value = map
-  loading.value = false
+
+  try {
+    const records = await getRecordsInRange(startStr, endStr)
+    if (seq !== loadSeq) return
+
+    const map = {}
+    records.forEach((r) => {
+      if (r.date && hasAnyContent(r)) {
+        map[r.date] = r
+      }
+    })
+    monthRecords.value = map
+
+    // 切换月份后自动对齐选中日期，避免停留在上个查看月份的日期上
+    if (autoPickDay) {
+      const today = todayKey()
+      if (today >= startStr && today <= endStr) {
+        selectedDateKey.value = today
+      } else {
+        const dates = Object.keys(map).sort()
+        selectedDateKey.value = dates.length ? dates[dates.length - 1] : startStr
+      }
+    }
+  } catch (err) {
+    if (seq !== loadSeq) return
+    console.error('加载月度记录失败:', err)
+    loadError.value = err.message || '加载失败，请重试'
+  } finally {
+    if (seq === loadSeq) {
+      loading.value = false
+    }
+  }
 }
 
-// 切换月份
 function prevMonth() {
   currentMonthDate.value = currentMonthDate.value.subtract(1, 'month')
-  loadMonthData()
+  loadMonthData(true)
 }
 
 function nextMonth() {
   currentMonthDate.value = currentMonthDate.value.add(1, 'month')
-  loadMonthData()
+  loadMonthData(true)
 }
 
-// 选中日期
+function jumpToCurrentMonth() {
+  currentMonthDate.value = dayjs().startOf('month')
+  selectedDateKey.value = todayKey()
+  loadMonthData(false)
+}
+
 function selectDate(dateStr) {
   if (!dateStr) return
   selectedDateKey.value = dateStr
 }
 
-// 跳转去编辑/补登
 function goToEdit() {
-  router.push({ path: '/', query: { date: selectedDateKey.value } })
+  if (selectedDateKey.value === todayKey()) {
+    router.push({ path: '/' })
+  } else {
+    router.push({ path: '/', query: { date: selectedDateKey.value } })
+  }
 }
 
-// 首次加载
 onMounted(() => {
-  loadMonthData()
+  loadMonthData(false)
 })
-
 </script>
 
 <template>
   <div class="page">
     <div class="page-header">
       <div class="header-row">
-        <h1>历史与补登</h1>
+        <div>
+          <h1>成长日历</h1>
+          <p>按月回顾每日打卡与补登</p>
+        </div>
+        <span class="month-count-pill tabular-nums">本月已记 {{ recordedDayCount }} 天</span>
       </div>
     </div>
 
     <div class="page-content">
-      <!-- 日历卡片 -->
+      <!-- 暖色日历卡片 -->
       <div class="card calendar-card">
         <div class="calendar-header">
-          <button class="icon-btn" @click="prevMonth">‹</button>
-          <span class="month-title">{{ monthTitle }}</span>
-          <button class="icon-btn" @click="nextMonth">›</button>
+          <button type="button" class="nav-icon-btn" aria-label="上个月" @click="prevMonth">
+            <AppIcon name="chevron-left" :size="18" />
+          </button>
+          <div class="month-center">
+            <span class="month-title">{{ monthTitle }}</span>
+            <button
+              v-if="currentMonthDate.format('YYYY-MM') !== dayjs().format('YYYY-MM')"
+              type="button"
+              class="back-month-btn"
+              @click="jumpToCurrentMonth"
+            >
+              回本月
+            </button>
+          </div>
+          <button type="button" class="nav-icon-btn" aria-label="下个月" @click="nextMonth">
+            <AppIcon name="chevron-right" :size="18" />
+          </button>
         </div>
-        
+
         <div class="calendar-grid">
-          <div class="weekday">一</div>
-          <div class="weekday">二</div>
-          <div class="weekday">三</div>
-          <div class="weekday">四</div>
-          <div class="weekday">五</div>
-          <div class="weekday">六</div>
-          <div class="weekday">日</div>
-          
-          <div 
-            v-for="day in calendarDays" 
+          <div v-for="w in ['一', '二', '三', '四', '五', '六', '日']" :key="w" class="weekday">
+            {{ w }}
+          </div>
+
+          <button
+            v-for="day in calendarDays"
             :key="day.dateStr || day.key"
+            type="button"
             class="day-cell"
-            :class="{ 
-              'empty': day.empty, 
+            :disabled="day.empty"
+            :class="{
+              empty: day.empty,
               'is-today': day.isToday,
-              'is-selected': day.dateStr === selectedDateKey
+              'is-selected': day.dateStr === selectedDateKey,
+              'has-pos': day.hasRecord && day.net >= 0,
+              'has-neg': day.hasRecord && day.net < 0,
             }"
             @click="selectDate(day.dateStr)"
           >
             <template v-if="!day.empty">
-              <span class="day-num">{{ day.date }}</span>
-              <span v-if="day.hasRecord" class="record-dot"></span>
+              <span class="day-num tabular-nums">{{ day.date }}</span>
+              <span v-if="day.hasRecord" class="day-dot"></span>
             </template>
-          </div>
+          </button>
+        </div>
+
+        <div class="calendar-legend">
+          <span class="legend-chip"><i class="dot pos"></i>净分 ≥ 0</span>
+          <span class="legend-chip"><i class="dot neg"></i>净分 &lt; 0</span>
         </div>
       </div>
 
       <!-- 选中日期的详情卡片 -->
       <div class="detail-section">
         <div class="detail-header">
-          <h3 class="detail-date">{{ dayjs(selectedDateKey).format('M月D日 dddd') }}</h3>
-          <span v-if="isSelectedToday" class="today-tag">今天</span>
+          <div class="detail-date-wrap">
+            <h2 class="detail-date">{{ dayjs(selectedDateKey).format('M月D日 dddd') }}</h2>
+            <span v-if="isSelectedToday" class="today-tag">今天</span>
+          </div>
+          <button type="button" class="detail-edit-link" @click="goToEdit">
+            <span>{{ selectedRecord ? '修改此日' : '立即补登' }}</span>
+            <AppIcon name="chevron-right" :size="14" />
+          </button>
         </div>
-        
-        <div v-if="loading" class="detail-empty">
-          <p>加载中...</p>
+
+        <div v-if="loading" class="loading card">
+          <div class="loading-spinner"></div>
+          <div>正在读取月度记录…</div>
         </div>
-        
+
+        <div v-else-if="loadError" class="error-card">
+          <div class="empty-icon-wrap">
+            <AppIcon name="alert" :size="22" />
+          </div>
+          <p class="error-text">{{ loadError }}</p>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm"
+            style="margin-top: 12px;"
+            @click="loadMonthData(false)"
+          >
+            <AppIcon name="refresh" :size="14" />
+            <span>重试</span>
+          </button>
+        </div>
+
         <template v-else-if="selectedRecord">
           <div class="card detail-card">
-            <!-- 积分小计 -->
-            <div class="detail-summary-row">
-              <div class="detail-stat">
-                <span class="stat-value positive">+{{ selectedRecord.addPoints || 0 }}</span>
-                <span class="stat-label">加分</span>
+            <!-- 当日核心摘要 -->
+            <div class="detail-summary-grid tabular-nums">
+              <div class="summary-cell">
+                <span
+                  class="summary-val"
+                  :class="selectedNet >= 0 ? 'points-positive' : 'points-negative'"
+                >
+                  {{ selectedNet >= 0 ? '+' : '' }}{{ selectedNet }}
+                </span>
+                <span class="summary-lbl">当日净分</span>
               </div>
-              <div class="detail-stat">
-                <span class="stat-value negative">-{{ selectedRecord.deductPoints || 0 }}</span>
-                <span class="stat-label">扣分</span>
+              <div class="summary-cell">
+                <span class="summary-val meal-color">¥{{ selectedMealTotal.toFixed(2) }}</span>
+                <span class="summary-lbl">三餐</span>
               </div>
-              <div class="detail-stat">
-                <span class="stat-value meal">¥{{ 
-                  ((Number(selectedRecord.breakfastAmount)||0) + 
-                   (Number(selectedRecord.lunchAmount)||0) + 
-                   (Number(selectedRecord.dinnerAmount)||0)).toFixed(2) 
-                }}</span>
-                <span class="stat-label">三餐</span>
+              <div v-if="selectedRecord.otherExpense > 0" class="summary-cell">
+                <span class="summary-val other-color">
+                  ¥{{ Number(selectedRecord.otherExpense).toFixed(2) }}
+                </span>
+                <span class="summary-lbl">其他消费</span>
               </div>
-              <div v-if="selectedRecord.otherExpense" class="detail-stat">
-                <span class="stat-value other">¥{{ Number(selectedRecord.otherExpense).toFixed(2) }}</span>
-                <span class="stat-label">其他消费</span>
-              </div>
-              <div v-if="selectedRecord.runDistance" class="detail-stat">
-                <span class="stat-value run">{{ selectedRecord.runDistance }}米</span>
-                <span class="stat-label">跑步</span>
+              <div v-if="hasSelectedRun" class="summary-cell">
+                <span class="summary-val run-color">
+                  {{
+                    selectedRecord.runDistance > 0
+                      ? `${selectedRecord.runDistance}米`
+                      : formatRunTime(selectedRecord.runTime)
+                  }}
+                </span>
+                <span class="summary-lbl">跑步</span>
               </div>
             </div>
-            
+
             <div class="detail-divider"></div>
-            
+
             <!-- 详细条目 -->
             <div class="detail-items">
               <div v-if="selectedRecord.addPoints > 0 || selectedRecord.addReason" class="detail-item">
                 <div class="item-head">
-                  <span class="item-dot add"></span>加分 ({{ selectedRecord.addPoints || 0 }})
+                  <span class="item-dot add"></span>
+                  <span>加分 (+{{ selectedRecord.addPoints || 0 }})</span>
                 </div>
-                <div class="item-body">{{ selectedRecord.addReason || '无原因' }}</div>
+                <div class="item-body">{{ selectedRecord.addReason || '未填写原因' }}</div>
               </div>
-              
-              <div v-if="selectedRecord.deductPoints > 0 || selectedRecord.deductReason" class="detail-item">
+
+              <div
+                v-if="selectedRecord.deductPoints > 0 || selectedRecord.deductReason"
+                class="detail-item"
+              >
                 <div class="item-head">
-                  <span class="item-dot deduct"></span>扣分 ({{ selectedRecord.deductPoints || 0 }})
+                  <span class="item-dot deduct"></span>
+                  <span>扣分 (-{{ selectedRecord.deductPoints || 0 }})</span>
                 </div>
-                <div class="item-body">{{ selectedRecord.deductReason || '无原因' }}</div>
+                <div class="item-body">{{ selectedRecord.deductReason || '未填写原因' }}</div>
               </div>
-              
-              <div v-if="selectedRecord.breakfastAmount > 0 || selectedRecord.breakfastContent" class="detail-item">
+
+              <div
+                v-if="selectedRecord.breakfastAmount > 0 || selectedRecord.breakfastContent"
+                class="detail-item"
+              >
                 <div class="item-head">
-                  <span class="item-dot meal"></span>早餐 (¥{{ selectedRecord.breakfastAmount || 0 }})
+                  <span class="item-dot meal"></span>
+                  <span>早餐 (¥{{ Number(selectedRecord.breakfastAmount || 0).toFixed(2) }})</span>
                 </div>
-                <div class="item-body">{{ selectedRecord.breakfastContent || '无内容' }}</div>
+                <div class="item-body">{{ selectedRecord.breakfastContent || '未填写内容' }}</div>
               </div>
-              
-              <div v-if="selectedRecord.lunchAmount > 0 || selectedRecord.lunchContent" class="detail-item">
+
+              <div
+                v-if="selectedRecord.lunchAmount > 0 || selectedRecord.lunchContent"
+                class="detail-item"
+              >
                 <div class="item-head">
-                  <span class="item-dot meal"></span>午餐 (¥{{ selectedRecord.lunchAmount || 0 }})
+                  <span class="item-dot meal"></span>
+                  <span>午餐 (¥{{ Number(selectedRecord.lunchAmount || 0).toFixed(2) }})</span>
                 </div>
-                <div class="item-body">{{ selectedRecord.lunchContent || '无内容' }}</div>
+                <div class="item-body">{{ selectedRecord.lunchContent || '未填写内容' }}</div>
               </div>
-              
-              <div v-if="selectedRecord.dinnerAmount > 0 || selectedRecord.dinnerContent" class="detail-item">
+
+              <div
+                v-if="selectedRecord.dinnerAmount > 0 || selectedRecord.dinnerContent"
+                class="detail-item"
+              >
                 <div class="item-head">
-                  <span class="item-dot meal"></span>晚餐 (¥{{ selectedRecord.dinnerAmount || 0 }})
+                  <span class="item-dot meal"></span>
+                  <span>晚餐 (¥{{ Number(selectedRecord.dinnerAmount || 0).toFixed(2) }})</span>
                 </div>
-                <div class="item-body">{{ selectedRecord.dinnerContent || '无内容' }}</div>
+                <div class="item-body">{{ selectedRecord.dinnerContent || '未填写内容' }}</div>
               </div>
-              
-              <div v-if="selectedRecord.runTime > 0 || selectedRecord.runDistance > 0" class="detail-item">
+
+              <div
+                v-if="selectedRecord.otherExpense > 0 || selectedRecord.otherExpenseReason"
+                class="detail-item"
+              >
                 <div class="item-head">
-                  <span class="item-dot run"></span>跑步
+                  <span class="item-dot other"></span>
+                  <span>其他消费 (¥{{ Number(selectedRecord.otherExpense || 0).toFixed(2) }})</span>
                 </div>
-                <div class="item-body">
-                  用时 {{ formatRunTime(selectedRecord.runTime) }} ·
-                  距离 {{ selectedRecord.runDistance || 0 }} 米
-                  <span v-if="selectedRecord.runTime > 0 && selectedRecord.runDistance > 0">
-                    · 速度 {{ (selectedRecord.runDistance / selectedRecord.runTime).toFixed(2) }} 米/秒
-                  </span>
-                </div>
+                <div class="item-body">{{ selectedRecord.otherExpenseReason || '未填写原因' }}</div>
               </div>
-              
-              <div v-if="selectedRecord.otherExpense > 0 || selectedRecord.otherExpenseReason" class="detail-item">
+
+              <div v-if="hasSelectedRun" class="detail-item">
                 <div class="item-head">
-                  <span class="item-dot other"></span>其他消费 (¥{{ selectedRecord.otherExpense || 0 }})
+                  <span class="item-dot run"></span>
+                  <span>跑步运动</span>
                 </div>
-                <div class="item-body">{{ selectedRecord.otherExpenseReason || '无原因' }}</div>
+                <div class="item-body tabular-nums">
+                  用时 {{ formatRunTime(selectedRecord.runTime) }} · 距离
+                  {{ selectedRecord.runDistance || 0 }} 米
+                  <template v-if="selectedRecord.runTime > 0 && selectedRecord.runDistance > 0">
+                    · 配速 {{ formatRunPace(selectedRecord.runTime, selectedRecord.runDistance) }}
+                  </template>
+                </div>
               </div>
             </div>
           </div>
-          
-          <button class="btn btn-lg btn-outline" @click="goToEdit">
-            修改此日记录
+
+          <button type="button" class="btn btn-lg btn-outline" @click="goToEdit">
+            <AppIcon name="edit" :size="17" />
+            <span>修改此日记录</span>
           </button>
         </template>
-        
+
         <template v-else>
-          <div class="detail-empty">
-            <div class="empty-icon">📝</div>
-            <p>这一天没有记录</p>
-            <button class="btn btn-primary btn-sm mt-3" @click="goToEdit">
+          <div class="empty-state">
+            <div class="empty-icon-wrap">
+              <AppIcon name="calendar" :size="22" />
+            </div>
+            <p class="empty-title">这一天还没有记录</p>
+            <p class="empty-sub">点击下方按钮可直接补登积分、三餐或跑步</p>
+            <button
+              type="button"
+              class="btn btn-primary btn-sm"
+              style="margin-top: 14px;"
+              @click="goToEdit"
+            >
               立即补登
             </button>
           </div>
@@ -282,227 +416,300 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
+}
+
+.month-count-pill {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary-deep);
+  background: var(--color-primary-light);
+  padding: 5px 11px;
+  border-radius: 999px;
+  flex-shrink: 0;
 }
 
 .calendar-card {
-  padding: 16px;
-  margin-bottom: 20px;
+  padding: 16px 14px 14px;
+  margin-bottom: 16px;
 }
 
 .calendar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
+}
+
+.month-center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .month-title {
-  font-size: 17px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-text);
 }
 
-.icon-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: var(--color-bg-input);
+.back-month-btn {
   border: none;
-  font-size: 20px;
-  display: flex;
+  background: var(--color-primary-light);
+  color: var(--color-primary-deep);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.nav-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--color-bg-muted);
+  border: none;
+  color: var(--color-text);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--color-text);
 }
 
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 8px 4px;
+  gap: 6px;
   text-align: center;
 }
 
 .weekday {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  font-weight: 500;
-  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-tertiary);
+  padding-bottom: 4px;
 }
 
 .day-cell {
   aspect-ratio: 1;
+  border: 1.5px solid transparent;
+  background: transparent;
+  border-radius: 13px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  font-size: 15px;
-  font-weight: 500;
-  position: relative;
-  cursor: pointer;
-}
-
-.day-cell:not(.empty):active {
-  opacity: 0.7;
-}
-
-.day-cell.is-today {
-  color: var(--color-primary);
+  gap: 3px;
+  font-size: 14px;
   font-weight: 700;
+  color: var(--color-text);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background-color 0.14s ease, border-color 0.14s ease;
+}
+
+.day-cell.empty {
+  cursor: default;
+}
+
+.day-cell.has-pos {
+  background: var(--color-success-light);
+  color: #065F46;
+}
+
+.day-cell.has-neg {
+  background: var(--color-danger-light);
+  color: #9F1239;
+}
+
+.day-cell.is-today:not(.is-selected) {
+  border-color: var(--color-primary);
+  color: var(--color-primary-deep);
 }
 
 .day-cell.is-selected {
-  background: var(--color-primary);
-  color: white;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-accent));
+  color: #FFFFFF;
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.28);
 }
 
-.record-dot {
-  width: 4px;
-  height: 4px;
+.day-num {
+  line-height: 1;
+}
+
+.day-dot {
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: var(--color-success);
-  position: absolute;
-  bottom: 4px;
+  background: currentColor;
+  opacity: 0.7;
 }
 
-.day-cell.is-selected .record-dot {
-  background: white;
+.day-cell.is-selected .day-dot {
+  background: #FFFFFF;
+  opacity: 1;
+}
+
+.calendar-legend {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-divider);
+}
+
+.legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+}
+
+.legend-chip .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.legend-chip .dot.pos {
+  background: var(--color-success);
+}
+
+.legend-chip .dot.neg {
+  background: var(--color-danger);
 }
 
 /* 详情区 */
-.detail-section {
-  padding-bottom: 30px;
-}
-
 .detail-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  padding: 0 4px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding: 0 2px;
+}
+
+.detail-date-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .detail-date {
-  font-size: 18px;
-  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--color-text);
 }
 
 .today-tag {
   font-size: 11px;
+  font-weight: 700;
   background: var(--color-primary-light);
-  color: var(--color-primary);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 600;
+  color: var(--color-primary-deep);
+  padding: 2px 8px;
+  border-radius: 999px;
 }
 
-.detail-empty {
-  text-align: center;
-  padding: 40px 0;
-  color: var(--color-text-tertiary);
-  background: var(--color-bg-white);
-  border-radius: var(--radius-lg);
-}
-
-.empty-icon {
-  font-size: 32px;
-  margin-bottom: 8px;
-  opacity: 0.5;
-}
-
-.mt-3 {
-  margin-top: 12px;
-}
-
-.btn-sm {
-  padding: 8px 20px;
-  font-size: 15px;
-  height: 40px;
-  border-radius: 20px;
-  width: auto;
+.detail-edit-link {
+  border: none;
+  background: transparent;
+  color: var(--color-primary-deep);
+  font-size: 13px;
+  font-weight: 700;
   display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  font-family: inherit;
 }
 
-.detail-card {
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.detail-summary-row {
+.detail-summary-grid {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-around;
-  padding-bottom: 12px;
+  gap: 10px;
+  padding: 10px 8px;
+  background: var(--color-bg-muted);
+  border-radius: 14px;
 }
 
-.detail-stat {
+.summary-cell {
   display: flex;
   flex-direction: column;
   align-items: center;
+  min-width: 68px;
 }
 
-.stat-value {
-  font-size: 18px;
-  font-weight: 700;
+.summary-val {
+  font-size: 17px;
+  font-weight: 800;
 }
-.stat-value.positive { color: var(--color-success); }
-.stat-value.negative { color: var(--color-danger); }
-.stat-value.meal { color: var(--color-warning); }
-.stat-value.run { color: #0A7E3B; }
-.stat-value.other { color: #7C3AED; }
 
-.stat-label {
-  font-size: 12px;
-  color: var(--color-text-secondary);
+.summary-lbl {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
   margin-top: 2px;
 }
 
 .detail-divider {
   height: 1px;
-  background: rgba(60, 60, 67, 0.08);
-  margin: 0 0 12px 0;
+  background: var(--color-divider);
+  margin: 14px 0;
 }
 
-.detail-item {
-  margin-bottom: 12px;
-}
-.detail-item:last-child {
-  margin-bottom: 0;
+.detail-items {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .item-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--color-text);
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 
 .item-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  flex-shrink: 0;
 }
 .item-dot.add { background: var(--color-success); }
 .item-dot.deduct { background: var(--color-danger); }
-.item-dot.meal { background: var(--color-warning); }
-.item-dot.run { background: #34C759; }
-.item-dot.other { background: #7C3AED; }
+.item-dot.meal { background: var(--color-primary); }
+.item-dot.other { background: var(--color-other); }
+.item-dot.run { background: var(--color-run); }
 
 .item-body {
   font-size: 14px;
   color: var(--color-text-secondary);
-  padding-left: 14px;
-  line-height: 1.4;
+  padding-left: 15px;
 }
 
-.btn-outline {
-  background: transparent;
-  border: 1px solid var(--color-primary);
-  color: var(--color-primary);
+.empty-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
 }
-.btn-outline:active {
-  background: var(--color-primary-light);
+
+.empty-sub {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-top: 4px;
+}
+
+.error-text {
+  font-size: 14px;
+  color: var(--color-danger);
+  font-weight: 600;
 }
 </style>
